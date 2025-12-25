@@ -74,7 +74,14 @@ app.get('/api/health', (req, res) => {
             error: dbError
         },
         email: {
-            resendConfigured: Boolean(process.env.RESEND_API_KEY)
+            resendConfigured: Boolean(process.env.RESEND_API_KEY || process.env.RESEND_KEY),
+            resendKeyPresent: Object.prototype.hasOwnProperty.call(process.env, 'RESEND_API_KEY') ||
+                Object.prototype.hasOwnProperty.call(process.env, 'RESEND_KEY'),
+            resendKeyLength: (process.env.RESEND_API_KEY || process.env.RESEND_KEY || '').length || 0,
+            resendKeyLooksValid: /^(re|rs)_[A-Za-z0-9_]+$/.test((process.env.RESEND_API_KEY || process.env.RESEND_KEY || '').trim()),
+            resendKeySource: process.env.RESEND_API_KEY
+                ? 'RESEND_API_KEY'
+                : (process.env.RESEND_KEY ? 'RESEND_KEY' : null)
         },
         build: {
             railwayCommit: process.env.RAILWAY_GIT_COMMIT_SHA || null,

@@ -5,9 +5,9 @@ let resendClient = null;
 function getResendClient() {
     if (resendClient) return resendClient;
 
-    const apiKey = process.env.RESEND_API_KEY;
+    const apiKey = process.env.RESEND_API_KEY || process.env.RESEND_KEY;
     if (!apiKey) {
-        throw new Error('Missing RESEND_API_KEY. Set it in your Railway service Variables.');
+        throw new Error('Missing RESEND_API_KEY (or RESEND_KEY). Set it in your Railway service Variables.');
     }
 
     resendClient = new Resend(apiKey);
