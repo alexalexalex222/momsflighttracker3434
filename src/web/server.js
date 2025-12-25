@@ -135,6 +135,25 @@ app.post('/api/scrape', async (req, res) => {
     }
 });
 
+// Cron endpoint for Vercel - runs every 6 hours
+app.get('/api/cron', async (req, res) => {
+    // Verify cron secret to prevent unauthorized access
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        console.log('[Cron] Triggered by Vercel cron job');
+        const { checkAndSendPriceUpdates } = await import('../scheduler/alerts.js');
+        await checkAndSendPriceUpdates();
+        res.json({ success: true, message: 'Price check and emails completed' });
+    } catch (error) {
+        console.error('[Cron] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Serve main page
 app.get('/', (req, res) => {
     res.sendFile(join(__dirname, 'public', 'index.html'));
@@ -147,6 +166,11 @@ app.listen(PORT, () => {
     Made with love for Mom - Christmas 2025
     `);
 
-    // Start automatic price drop alerts
-    startScheduler();
+    // Start automatic price drop alerts (only locally, Vercel uses cron endpoint)
+    if (!process.env.VERCEL) {
+        startScheduler();
+    }
 });
+
+// Export for Vercel serverless
+export default app;
