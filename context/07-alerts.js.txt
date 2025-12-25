@@ -1,0 +1,77 @@
+// src/scheduler/alerts.js - 6-Hour Cron Job
+
+import cron from 'node-cron';
+import { getDb } from '../db/setup.js';
+import { sendPriceDropAlert } from '../notifications/email.js';
+import { analyzeFlightPrice } from '../agent/analyze.js';
+
+// Check prices and send updates
+async function checkAndSendPriceUpdates() {
+    console.log('\n[Scheduler] Running scheduled price check...');
+    const db = getDb();
+
+    try {
+        // First, scrape latest prices
+        const { scrapeAllFlights } = await import('../scraper/google-flights.js');
+        console.log('[Scheduler] Scraping latest prices...');
+        await scrapeAllFlights();
+
+        // Get all active flights with prices
+        const flights = db.prepare(`
+            SELECT
+                f.id, f.name, f.origin, f.destination, f.notify_email, f.departure_date,
+                (SELECT price FROM prices WHERE flight_id = f.id ORDER BY checked_at DESC LIMIT 1) as current_price,
+                (SELECT price FROM prices WHERE flight_id = f.id ORDER BY checked_at DESC LIMIT 1 OFFSET 1) as previous_price,
+                (SELECT MIN(price) FROM prices WHERE flight_id = f.id) as lowest_price,
+                (SELECT airline FROM prices WHERE flight_id = f.id ORDER BY checked_at DESC LIMIT 1) as airline
+            FROM flights f
+            WHERE f.is_active = 1 AND f.notify_email IS NOT NULL
+        `).all();
+
+        for (const flight of flights) {
+            if (!flight.current_price) continue;
+
+            console.log(`[Scheduler] Sending update for ${flight.name}: $${flight.current_price}`);
+
+            // Get analysis for insights
+            let analysis = null;
+            try {
+                analysis = await analyzeFlightPrice(flight.id);
+            } catch (e) {
+                console.log('[Scheduler] Analysis unavailable:', e.message);
+            }
+
+            await sendPriceDropAlert({
+                to: flight.notify_email,
+                flightName: flight.name,
+                route: `${flight.origin} → ${flight.destination}`,
+                currentPrice: flight.current_price,
+                previousPrice: flight.previous_price || flight.current_price,
+                lowestPrice: flight.lowest_price || flight.current_price,
+                airline: flight.airline || 'Delta',
+                analysis
+            });
+
+            console.log(`[Scheduler] Email sent to ${flight.notify_email}`);
+        }
+
+        console.log('[Scheduler] All updates sent!');
+    } catch (error) {
+        console.error('[Scheduler] Error:', error.message);
+    } finally {
+        db.close();
+    }
+}
+
+// Start the scheduler
+export function startScheduler() {
+    // Run every 6 hours - scrape prices and send email updates
+    cron.schedule('0 */6 * * *', () => {
+        checkAndSendPriceUpdates();
+    });
+
+    console.log('[Scheduler] Started - will check prices & send emails every 6 hours');
+}
+
+// Export for manual testing
+export { checkAndSendPriceUpdates };

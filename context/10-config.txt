@@ -1,0 +1,73 @@
+// =====================================================
+// package.json
+// =====================================================
+
+{
+  "name": "flight-tracker",
+  "version": "1.0.0",
+  "description": "Agentic flight price tracker - Christmas gift for Mom",
+  "type": "module",
+  "scripts": {
+    "start": "node src/web/server.js",
+    "dev": "node src/web/server.js",
+    "scrape": "claude --chrome -p \"$(cat src/agent/scrape-prompt.md)\" --dangerously-skip-permissions",
+    "scrape:test": "node src/agent/test-scrape.js",
+    "setup": "node src/db/setup.js",
+    "analyze": "node src/agent/analyze.js",
+    "test:email": "node scripts/test-email.js"
+  },
+  "dependencies": {
+    "amadeus": "^11.0.0",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.12",
+    "puppeteer": "^24.34.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "resend": "^4.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
+
+
+// =====================================================
+// nixpacks.toml - Railway Build Config
+// =====================================================
+
+[phases.setup]
+nixPkgs = ["chromium", "nodejs_20", "python3"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[start]
+cmd = "npm run dev"
+
+[variables]
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
+# Nixpacks installs Chromium via nixPkgs (available on PATH as `chromium`).
+# Do NOT use /usr/bin/chromium-browser (often a snap stub that fails in containers).
+PUPPETEER_EXECUTABLE_PATH = "chromium"
+
+
+// =====================================================
+// Environment Variables Required (Railway)
+// =====================================================
+
+RESEND_API_KEY=re_G8GSxLer_CzUi1dZ817u6zzaP1BkxsJ5v
+PORT=3000 (optional, Railway sets automatically)
+
+
+// =====================================================
+// .gitignore
+// =====================================================
+
+.env
+node_modules/
+data/
+*.db
+/tmp/
