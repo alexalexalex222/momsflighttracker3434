@@ -4,6 +4,7 @@
   "description": "Agentic flight price tracker - Christmas gift for Mom",
   "type": "module",
   "scripts": {
+    "start": "node src/web/server.js",
     "dev": "node src/web/server.js",
     "scrape": "claude --chrome -p \"$(cat src/agent/scrape-prompt.md)\" --dangerously-skip-permissions",
     "scrape:test": "node src/agent/test-scrape.js",

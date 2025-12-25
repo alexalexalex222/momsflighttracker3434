@@ -1,0 +1,12 @@
+[phases.setup]
+nixPkgs = ["chromium", "nodejs_20", "python3"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[start]
+cmd = "npm run dev"
+
+[variables]
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
+PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium-browser"
