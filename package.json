@@ -1,0 +1,29 @@
+{
+  "name": "flight-tracker",
+  "version": "1.0.0",
+  "description": "Agentic flight price tracker - Christmas gift for Mom",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/web/server.js",
+    "scrape": "claude --chrome -p \"$(cat src/agent/scrape-prompt.md)\" --dangerously-skip-permissions",
+    "scrape:test": "node src/agent/test-scrape.js",
+    "setup": "node src/db/setup.js",
+    "analyze": "node src/agent/analyze.js",
+    "test:email": "node scripts/test-email.js"
+  },
+  "dependencies": {
+    "amadeus": "^11.0.0",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.12",
+    "puppeteer": "^24.34.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "resend": "^4.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

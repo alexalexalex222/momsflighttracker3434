@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Altitude — Flight Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #09090b;
+            --bg-card: #111113;
+            --bg-input: #18181b;
+            --border: rgba(255,255,255,0.08);
+            --text: #fafafa;
+            --text-dim: #a1a1aa;
+            --text-muted: #52525b;
+            --accent: #eab308;
+            --accent-dim: rgba(234,179,8,0.12);
+            --green: #22c55e;
+            --green-dim: rgba(34,197,94,0.12);
+            --red: #ef4444;
+            --red-dim: rgba(239,68,68,0.12);
+            --radius: 10px;
+        }
+
+        html { font-size: 15px; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Header */
+        .header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            background: var(--bg);
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent), #ca8a04);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-icon svg { width: 18px; height: 18px; color: var(--bg); }
+        .logo-text { font-weight: 700; font-size: 1.1rem; }
+
+        .christmas-tag {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .ornament-tiny { width: 20px; height: 24px; }
+
+        /* Container */
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 40px 24px 80px;
+        }
+
+        /* Welcome State */
+        .welcome {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .welcome-icon {
+            width: 72px;
+            height: 72px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .welcome-icon svg { width: 32px; height: 32px; color: var(--accent); }
+
+        .welcome h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .welcome p {
+            color: var(--text-dim);
+            margin-bottom: 28px;
+            max-width: 360px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.5;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            border-radius: var(--radius);
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+            transition: all 0.15s ease;
+        }
+
+        .btn svg { width: 18px; height: 18px; }
+
+        .btn-primary { background: var(--accent); color: var(--bg); }
+        .btn-primary:hover { background: #d4a106; }
+
+        .btn-secondary { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: var(--bg-input); }
+
+        .btn-ghost { background: transparent; color: var(--text-dim); padding: 10px 14px; }
+        .btn-ghost:hover { background: var(--bg-card); color: var(--text); }
+
+        .btn-danger { background: var(--red-dim); color: var(--red); padding: 8px 14px; font-size: 0.85rem; }
+        .btn-danger:hover { background: rgba(239,68,68,0.2); }
+
+        .btn-sm { padding: 8px 14px; font-size: 0.85rem; }
+        .btn-loading { opacity: 0.6; pointer-events: none; }
+
+        /* Form Card */
+        .form-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 28px;
+        }
+
+        .form-card h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-card h2 svg { width: 20px; height: 20px; color: var(--accent); }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 14px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group.full { grid-column: span 2; }
+
+        .form-group label {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-dim);
+        }
+
+        .form-group input,
+        .form-group select {
+            height: 44px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0 14px;
+            font-size: 0.95rem;
+            color: var(--text);
+            font-family: inherit;
+        }
+
+        .form-group input::placeholder { color: var(--text-muted); }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+
+        .form-group select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2352525b' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            padding-right: 40px;
+            cursor: pointer;
+        }
+
+        .airport-input {
+            font-family: 'JetBrains Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Flight List */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+        }
+
+        .section-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-dim);
+        }
+
+        .flight-list { display: flex; flex-direction: column; gap: 10px; }
+
+        .flight-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            transition: border-color 0.15s;
+        }
+
+        .flight-card:hover { border-color: rgba(255,255,255,0.12); }
+
+        .flight-info { flex: 1; }
+
+        .flight-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .route-tag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 500;
+            background: var(--accent-dim);
+            color: var(--accent);
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+
+        .flight-meta { font-size: 0.85rem; color: var(--text-muted); }
+
+        .flight-price { text-align: right; }
+
+        .price-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .price-pending {
+            color: var(--text-muted);
+            font-style: italic;
+            font-family: inherit;
+            font-size: 0.95rem;
+        }
+
+        .price-trend { font-size: 0.75rem; font-weight: 500; margin-top: 2px; }
+        .price-trend.down { color: var(--green); }
+        .price-trend.up { color: var(--red); }
+
+        .flight-actions { display: flex; gap: 8px; }
+
+        /* Modal */
+        .modal-bg {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 24px;
+        }
+
+        .modal-bg.open { display: flex; }
+
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            width: 100%;
+            max-width: 560px;
+            max-height: 80vh;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title { font-weight: 600; font-size: 0.95rem; }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        .modal-close:hover { color: var(--text); }
+
+        .modal-body { padding: 20px; max-height: 70vh; overflow-y: auto; }
+
+        /* Analysis Section */
+        .analysis-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
+        .analysis-header { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px; color: var(--accent); }
+        .analysis-icon { font-size: 1.2rem; }
+        .analysis-action {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+        }
+        .analysis-action.book-now { background: var(--green-dim); color: var(--green); }
+        .analysis-action.book-soon { background: var(--accent-dim); color: var(--accent); }
+        .analysis-action.monitor { background: var(--bg-input); color: var(--text-dim); }
+        .analysis-action.consider { background: var(--green-dim); color: var(--green); }
+        .analysis-reco { color: var(--text-dim); font-size: 0.9rem; line-height: 1.5; margin-bottom: 16px; }
+        .analysis-insights { display: flex; flex-direction: column; gap: 8px; }
+        .insight-item {
+            background: var(--bg-input);
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            line-height: 1.4;
+        }
+        .insight-item strong { color: var(--text); }
+        .analysis-sources { margin-top: 12px; font-size: 0.75rem; color: var(--text-muted); }
+        .analysis-sources a { color: var(--accent); text-decoration: none; }
+        .analysis-sources a:hover { text-decoration: underline; }
+        .analysis-loading { text-align: center; color: var(--text-muted); padding: 20px; }
+
+        .chart-box {
+            height: 180px;
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 16px;
+        }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+
+        .stat-box {
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 14px;
+            text-align: center;
+        }
+
+        .stat-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .stat-num.green { color: var(--green); }
+        .stat-num.red { color: var(--red); }
+
+        .stat-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .form-group.full { grid-column: span 1; }
+            .flight-card { flex-direction: column; text-align: center; gap: 12px; }
+            .flight-price { text-align: center; }
+            .flight-actions { justify-content: center; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.4-.1.9.3 1.1l6.5 3.8-2.7 2.7-2.3-.5c-.4-.1-.8.1-1 .4l-.2.3c-.2.3-.1.7.2.9l2.9 2 2 2.9c.2.3.6.4.9.2l.3-.2c.3-.2.5-.6.4-1l-.5-2.3 2.7-2.7 3.8 6.5c.2.4.7.5 1.1.3l.5-.3c.4-.2.6-.6.5-1.1z"/>
+                </svg>
+            </div>
+            <span class="logo-text">Altitude</span>
+        </div>
+        <div class="christmas-tag">
+            <svg class="ornament-tiny" viewBox="0 0 20 26" fill="none">
+                <rect x="8" y="0" width="4" height="4" rx="1" fill="#eab308"/>
+                <circle cx="10" cy="15" r="9" fill="#dc2626"/>
+                <ellipse cx="7" cy="12" rx="3" ry="4" fill="white" opacity="0.15"/>
+            </svg>
+            For Mom
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Step 1: Welcome (no flights) -->
+        <div id="welcomeState" class="welcome">
+            <div class="welcome-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.4-.1.9.3 1.1l6.5 3.8-2.7 2.7-2.3-.5c-.4-.1-.8.1-1 .4l-.2.3c-.2.3-.1.7.2.9l2.9 2 2 2.9c.2.3.6.4.9.2l.3-.2c.3-.2.5-.6.4-1l-.5-2.3 2.7-2.7 3.8 6.5c.2.4.7.5 1.1.3l.5-.3c.4-.2.6-.6.5-1.1z"/>
+                </svg>
+            </div>
+            <h1>Track Flight Prices</h1>
+            <p>Add a flight to monitor and get notified when prices drop.</p>
+            <button class="btn btn-primary" onclick="showForm()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                Add a Flight
+            </button>
+        </div>
+
+        <!-- Step 2: Add Form -->
+        <div id="formCard" class="form-card hidden">
+            <h2>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                Add Flight
+            </h2>
+            <form id="flightForm">
+                <div class="form-grid">
+                    <div class="form-group full">
+                        <label>Trip Name</label>
+                        <input type="text" id="name" placeholder="Mom's Spain Trip" required>
+                    </div>
+                    <div class="form-group">
+                        <label>From</label>
+                        <input type="text" id="origin" class="airport-input" placeholder="ATL" maxlength="3" required>
+                    </div>
+                    <div class="form-group">
+                        <label>To</label>
+                        <input type="text" id="destination" class="airport-input" placeholder="MAD" maxlength="3" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Departure</label>
+                        <input type="date" id="departureDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Return (optional)</label>
+                        <input type="date" id="returnDate">
+                    </div>
+                    <div class="form-group">
+                        <label>Travelers</label>
+                        <input type="number" id="passengers" value="1" min="1" max="9">
+                    </div>
+                    <div class="form-group">
+                        <label>Class</label>
+                        <select id="cabinClass">
+                            <option value="economy">Economy</option>
+                            <option value="premium_economy">Premium</option>
+                            <option value="business">Business</option>
+                            <option value="first">First</option>
+                        </select>
+                    </div>
+                    <div class="form-group full">
+                        <label>Email for Alerts</label>
+                        <input type="email" id="email" placeholder="you@email.com" required>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Start Tracking</button>
+                    <button type="button" class="btn btn-ghost" onclick="hideForm()">Cancel</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Step 3: Flight List -->
+        <div id="flightSection" class="hidden">
+            <div class="section-header">
+                <span class="section-title">Your Flights</span>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="checkPrices()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 12a9 9 0 11-6.219-8.56"/><polyline points="21 3 21 9 15 9"/></svg>
+                        Refresh
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="showForm()">+ Add</button>
+                </div>
+            </div>
+            <div id="flightList" class="flight-list"></div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="modal-bg">
+        <div class="modal">
+            <div class="modal-header">
+                <span id="modalTitle" class="modal-title">Price History</span>
+                <button class="modal-close" onclick="closeModal()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="chart-box"><canvas id="priceChart"></canvas></div>
+                <div id="modalStats" class="stats-grid"></div>
+                <div id="analysisSection" class="analysis-section hidden">
+                    <div class="analysis-header">
+                        <span class="analysis-icon">🧠</span>
+                        <span>Price Intelligence</span>
+                    </div>
+                    <div id="analysisAction" class="analysis-action"></div>
+                    <div id="analysisReco" class="analysis-reco"></div>
+                    <div id="analysisInsights" class="analysis-insights"></div>
+                    <div id="analysisSources" class="analysis-sources"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+        let flights = [];
+
+        document.addEventListener('DOMContentLoaded', loadFlights);
+
+        function showForm() {
+            document.getElementById('formCard').classList.remove('hidden');
+            document.getElementById('welcomeState').classList.add('hidden');
+            document.getElementById('name').focus();
+        }
+
+        function hideForm() {
+            document.getElementById('formCard').classList.add('hidden');
+            updateView();
+        }
+
+        function updateView() {
+            const has = flights.length > 0;
+            document.getElementById('welcomeState').classList.toggle('hidden', has);
+            document.getElementById('flightSection').classList.toggle('hidden', !has);
+        }
+
+        async function loadFlights() {
+            try {
+                const r = await fetch('/api/flights');
+                flights = await r.json();
+                render();
+                updateView();
+            } catch(e) { console.error(e); }
+        }
+
+        function render() {
+            document.getElementById('flightList').innerHTML = flights.map(f => {
+                const chg = f.lowest_price && f.latest_price
+                    ? ((f.latest_price - f.lowest_price) / f.lowest_price * 100).toFixed(1)
+                    : null;
+                const cls = parseFloat(chg) > 0 ? 'up' : 'down';
+                const arr = parseFloat(chg) > 0 ? '↑' : '↓';
+
+                return `
+                <div class="flight-card">
+                    <div class="flight-info">
+                        <div class="flight-name">
+                            ${f.name}
+                            <span class="route-tag">${f.origin} → ${f.destination}</span>
+                        </div>
+                        <div class="flight-meta">${fmtDate(f.departure_date)}${f.return_date ? ' – ' + fmtDate(f.return_date) : ''}</div>
+                    </div>
+                    <div class="flight-price">
+                        ${f.latest_price ? `<div class="price-value">$${f.latest_price}</div>` : '<div class="price-value price-pending">Checking...</div>'}
+                        ${chg !== null ? `<div class="price-trend ${cls}">${arr} ${Math.abs(chg)}%</div>` : ''}
+                    </div>
+                    <div class="flight-actions">
+                        <button class="btn btn-ghost btn-sm" onclick="showHistory(${f.id},'${f.name.replace(/'/g,"\\'")}')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="sendAlert(${f.id})" title="Send email alert">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="del(${f.id})">Stop</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        document.getElementById('flightForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.classList.add('btn-loading');
+            btn.textContent = 'Adding...';
+
+            const data = {
+                name: document.getElementById('name').value,
+                origin: document.getElementById('origin').value.toUpperCase(),
+                destination: document.getElementById('destination').value.toUpperCase(),
+                departure_date: document.getElementById('departureDate').value,
+                return_date: document.getElementById('returnDate').value || null,
+                passengers: +document.getElementById('passengers').value,
+                cabin_class: document.getElementById('cabinClass').value,
+                notify_email: document.getElementById('email').value
+            };
+
+            try {
+                const r = await fetch('/api/flights', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (r.ok) {
+                    e.target.reset();
+                    hideForm();
+                    loadFlights();
+                } else alert('Error');
+            } catch(e) { alert('Error'); }
+            finally {
+                btn.classList.remove('btn-loading');
+                btn.textContent = 'Start Tracking';
+            }
+        });
+
+        async function del(id) {
+            if (!confirm('Stop tracking?')) return;
+            await fetch(`/api/flights/${id}`, {method:'DELETE'});
+            loadFlights();
+        }
+
+        async function sendAlert(id) {
+            const btn = event.target.closest('button');
+            const orig = btn.innerHTML;
+            btn.classList.add('btn-loading');
+            btn.innerHTML = '...';
+            try {
+                const r = await fetch(`/api/flights/${id}/notify`, {method:'POST'});
+                const d = await r.json();
+                if (r.ok) {
+                    alert('Email sent! Check your inbox.');
+                } else {
+                    alert(d.error || 'Failed to send email');
+                }
+            } catch(e) {
+                alert('Error sending email');
+            } finally {
+                btn.classList.remove('btn-loading');
+                btn.innerHTML = orig;
+            }
+        }
+
+        async function checkPrices() {
+            const btn = event.target.closest('button');
+            btn.classList.add('btn-loading');
+            const o = btn.innerHTML;
+            btn.innerHTML = 'Checking...';
+            try { await fetch('/api/scrape', {method:'POST'}); loadFlights(); }
+            catch(e) { alert('Error'); }
+            finally { btn.classList.remove('btn-loading'); btn.innerHTML = o; }
+        }
+
+        async function showHistory(id, name) {
+            document.getElementById('modalTitle').textContent = name;
+            document.getElementById('modal').classList.add('open');
+
+            // Reset analysis section
+            document.getElementById('analysisSection').classList.add('hidden');
+
+            const r = await fetch(`/api/flights/${id}/prices?days=60`);
+            const p = await r.json();
+
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            if (chart) chart.destroy();
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: p.map(x => new Date(x.checked_at).toLocaleDateString()),
+                    datasets: [{
+                        data: p.map(x => x.price),
+                        borderColor: '#eab308',
+                        borderWidth: 2,
+                        backgroundColor: 'rgba(234,179,8,0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#eab308'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {legend:{display:false}},
+                    scales: {
+                        y: {ticks:{callback:v=>'$'+v,color:'#52525b'},grid:{color:'rgba(255,255,255,0.05)'}},
+                        x: {ticks:{color:'#52525b'},grid:{display:false}}
+                    }
+                }
+            });
+
+            if (p.length) {
+                const c = p[p.length-1].price, l = Math.min(...p.map(x=>x.price)), h = Math.max(...p.map(x=>x.price)), a = Math.round(p.reduce((s,x)=>s+x.price,0)/p.length);
+                document.getElementById('modalStats').innerHTML = `
+                    <div class="stat-box"><div class="stat-num">$${c}</div><div class="stat-label">Current</div></div>
+                    <div class="stat-box"><div class="stat-num green">$${l}</div><div class="stat-label">Lowest</div></div>
+                    <div class="stat-box"><div class="stat-num red">$${h}</div><div class="stat-label">Highest</div></div>
+                    <div class="stat-box"><div class="stat-num">$${a}</div><div class="stat-label">Average</div></div>
+                `;
+            } else {
+                document.getElementById('modalStats').innerHTML = '<p style="text-align:center;color:var(--text-muted);grid-column:span 4;">No data yet</p>';
+            }
+
+            // Fetch and display analysis
+            loadAnalysis(id);
+        }
+
+        async function loadAnalysis(id) {
+            const section = document.getElementById('analysisSection');
+            section.classList.remove('hidden');
+            section.innerHTML = `
+                <div class="analysis-header">
+                    <span class="analysis-icon">🧠</span>
+                    <span>Price Intelligence</span>
+                </div>
+                <div class="analysis-loading">Analyzing...</div>
+            `;
+
+            try {
+                const r = await fetch(`/api/flights/${id}/analysis`);
+                const a = await r.json();
+
+                if (a.error) throw new Error(a.error);
+
+                const actionClass = a.action.toLowerCase().replace(' ', '-');
+                const insightsHtml = a.insights.length > 0
+                    ? a.insights.slice(0, 3).map(i => `<div class="insight-item"><strong>${i.category}:</strong> ${i.text}</div>`).join('')
+                    : '<div class="insight-item">No additional insights found.</div>';
+                const sourcesHtml = a.sources.length > 0
+                    ? 'Sources: ' + a.sources.map(s => `<a href="${s.url}" target="_blank">${s.name}</a>`).join(', ')
+                    : '';
+
+                section.innerHTML = `
+                    <div class="analysis-header">
+                        <span class="analysis-icon">🧠</span>
+                        <span>Price Intelligence</span>
+                    </div>
+                    <div class="analysis-action ${actionClass}">${a.action}</div>
+                    <div class="analysis-reco">${a.recommendation}</div>
+                    <div class="analysis-insights">${insightsHtml}</div>
+                    ${sourcesHtml ? `<div class="analysis-sources">${sourcesHtml}</div>` : ''}
+                `;
+            } catch (e) {
+                section.innerHTML = `
+                    <div class="analysis-header">
+                        <span class="analysis-icon">🧠</span>
+                        <span>Price Intelligence</span>
+                    </div>
+                    <div class="analysis-reco" style="color:var(--text-muted)">Unable to load analysis. Try again later.</div>
+                `;
+            }
+        }
+
+        function closeModal() { document.getElementById('modal').classList.remove('open'); }
+        function fmtDate(d) { return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+        document.getElementById('modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+    </script>
+</body>
+</html>

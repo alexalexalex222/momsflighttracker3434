@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.flighttracker.scrape</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/alexburkhart/flight-tracker/scripts/run-scrape.sh</string>
+    </array>
+
+    <!-- Run every 4 hours (14400 seconds) -->
+    <key>StartInterval</key>
+    <integer>14400</integer>
+
+    <!-- Also run when loaded (on login) -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Only run when computer is awake -->
+    <key>AbandonProcessGroup</key>
+    <true/>
+
+    <!-- Log output -->
+    <key>StandardOutPath</key>
+    <string>/Users/alexburkhart/flight-tracker/data/launchd-out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/alexburkhart/flight-tracker/data/launchd-err.log</string>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+</dict>
+</plist>
