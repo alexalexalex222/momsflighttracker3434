@@ -52,6 +52,67 @@ function migrate(db) {
     if (!flightCols.includes('preferred_airline')) {
         db.exec(`ALTER TABLE flights ADD COLUMN preferred_airline TEXT DEFAULT 'any'`);
     }
+    if (!flightCols.includes('last_checked_at')) {
+        db.exec(`ALTER TABLE flights ADD COLUMN last_checked_at TEXT`);
+    }
+    if (!flightCols.includes('last_check_status')) {
+        db.exec(`ALTER TABLE flights ADD COLUMN last_check_status TEXT`);
+    }
+    if (!flightCols.includes('last_check_error')) {
+        db.exec(`ALTER TABLE flights ADD COLUMN last_check_error TEXT`);
+    }
+
+    // New tables (safe to run repeatedly)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            flight_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'queued',
+            progress_current INTEGER DEFAULT 0,
+            progress_total INTEGER DEFAULT 0,
+            result_json TEXT,
+            error_text TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            started_at TEXT,
+            finished_at TEXT,
+            FOREIGN KEY (flight_id) REFERENCES flights(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_jobs_flight_id ON jobs(flight_id);
+        CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+
+        CREATE TABLE IF NOT EXISTS flex_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            flight_id INTEGER NOT NULL,
+            departure_date TEXT NOT NULL,
+            return_date TEXT DEFAULT '',
+            cabin_class TEXT NOT NULL,
+            passengers INTEGER NOT NULL,
+            price REAL,
+            currency TEXT DEFAULT 'USD',
+            airline TEXT,
+            source TEXT DEFAULT 'amadeus',
+            checked_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(flight_id, departure_date, return_date, cabin_class, passengers),
+            FOREIGN KEY (flight_id) REFERENCES flights(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_flex_flight_id ON flex_prices(flight_id);
+        CREATE INDEX IF NOT EXISTS idx_flex_checked_at ON flex_prices(checked_at);
+
+        CREATE TABLE IF NOT EXISTS contexts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            flight_id INTEGER NOT NULL,
+            context_json TEXT NOT NULL,
+            fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            expires_at TEXT,
+            FOREIGN KEY (flight_id) REFERENCES flights(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_contexts_flight_id ON contexts(flight_id);
+        CREATE INDEX IF NOT EXISTS idx_contexts_expires_at ON contexts(expires_at);
+    `);
 }
 
 function initializeIfNeeded(db) {

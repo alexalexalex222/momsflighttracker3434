@@ -102,6 +102,44 @@ async function launchBrowser() {
     throw new Error(`${hint}\nTried: ${details}`);
 }
 
+function mapCabinToQuery(cabinClass) {
+    switch ((cabinClass || '').toLowerCase()) {
+        case 'premium_economy':
+            return 'premium economy';
+        case 'business':
+            return 'business class';
+        case 'first':
+            return 'first class';
+        case 'economy':
+        default:
+            return 'economy';
+    }
+}
+
+function buildSearchQuery(flight) {
+    const { origin, destination, departure_date, return_date, preferred_airline, passengers, cabin_class } = flight;
+
+    const depDate = departure_date.replace(/-/g, '-');
+    const retDate = return_date ? return_date.replace(/-/g, '-') : null;
+
+    const pax = Number.isFinite(passengers) ? Math.max(1, passengers) : 1;
+    const paxText = `${pax} adult${pax === 1 ? '' : 's'}`;
+    const cabinText = mapCabinToQuery(cabin_class);
+
+    let query = `Flights from ${origin} to ${destination} on ${depDate}`;
+    if (retDate) {
+        query += ` returning ${retDate}`;
+    }
+
+    query += ` ${paxText} ${cabinText}`;
+
+    if (preferred_airline && preferred_airline !== 'any') {
+        query += ` ${preferred_airline}`;
+    }
+
+    return query;
+}
+
 // Scrape a single flight from Google Flights
 async function scrapeFlight(browser, flight) {
     const page = await browser.newPage();
@@ -110,20 +148,9 @@ async function scrapeFlight(browser, flight) {
         await page.setViewport({ width: 1400, height: 900 });
         await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        const { origin, destination, departure_date, return_date, preferred_airline } = flight;
-
-        // Format the dates
-        const depDate = departure_date.replace(/-/g, '-');
-        const retDate = return_date ? return_date.replace(/-/g, '-') : null;
-
-        // Build search query - add airline filter if specified
-        let query = `Flights from ${origin} to ${destination} on ${depDate}`;
-        if (retDate) {
-            query += ` returning ${retDate}`;
-        }
-        if (preferred_airline && preferred_airline !== 'any') {
-            query += ` ${preferred_airline}`;  // Add airline to search
-        }
+        const { origin, destination } = flight;
+        const prefersDelta = String(flight.preferred_airline || '').toLowerCase() === 'delta';
+        const query = buildSearchQuery(flight);
 
         const url = `https://www.google.com/travel/flights?q=${encodeURIComponent(query)}&curr=USD`;
 
@@ -209,15 +236,15 @@ async function scrapeFlight(browser, flight) {
             };
         });
 
-        // Prefer Delta price, fall back to cheapest
-        const finalPrice = result.deltaPrice || result.cheapestPrice;
-        const finalAirline = result.deltaPrice ? 'Delta' : result.cheapestAirline;
+        // Prefer Delta price only when requested, otherwise use cheapest
+        const finalPrice = (prefersDelta && result.deltaPrice) ? result.deltaPrice : result.cheapestPrice;
+        const finalAirline = (prefersDelta && result.deltaPrice) ? 'Delta' : result.cheapestAirline;
 
         await page.close();
 
         if (finalPrice) {
             console.log(`[Scraper] Found: $${finalPrice} (${finalAirline}) | Delta: $${result.deltaPrice || 'N/A'} | Cheapest: $${result.cheapestPrice} | All: ${result.foundPrices.join(', ')}`);
-            return { price: finalPrice, airline: finalAirline, success: true };
+            return { price: finalPrice, airline: finalAirline, success: true, raw_data: result };
         } else {
             console.log(`[Scraper] No price found for ${flight.name}`);
             return { success: false, error: 'No prices found on page' };
@@ -227,6 +254,30 @@ async function scrapeFlight(browser, flight) {
         console.error(`[Scraper] Error: ${error.message}`);
         try { await page.close(); } catch (e) {}
         return { success: false, error: error.message };
+    }
+}
+
+export async function getGoogleFlightQuote(flight, browser = null) {
+    const ownBrowser = !browser;
+    const activeBrowser = browser || await launchBrowser();
+
+    try {
+        const result = await scrapeFlight(activeBrowser, flight);
+        if (!result.success) {
+            throw new Error(result.error || 'No prices found on page');
+        }
+
+        return {
+            price: result.price,
+            airline: result.airline,
+            currency: 'USD',
+            source: 'google_flights',
+            raw_data: result.raw_data
+        };
+    } finally {
+        if (ownBrowser) {
+            await activeBrowser.close();
+        }
     }
 }
 

@@ -250,6 +250,43 @@
             line-height: 1.4;
         }
 
+        .schedule-info {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 18px;
+        }
+
+        .flex-summary {
+            margin-top: 10px;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            line-height: 1.4;
+        }
+
+        .context-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .context-item {
+            background: var(--bg-input);
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            line-height: 1.4;
+        }
+
+        .context-item a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
         /* Flight List */
         .section-header {
             display: flex;
@@ -469,6 +506,7 @@
     </header>
 
     <div class="container">
+        <div id="scheduleInfo" class="schedule-info hidden"></div>
         <!-- Step 1: Welcome (no flights) -->
         <div id="welcomeState" class="welcome">
             <div class="welcome-icon">
@@ -573,6 +611,22 @@
             <div class="modal-body">
                 <div class="chart-box"><canvas id="priceChart"></canvas></div>
                 <div id="modalStats" class="stats-grid"></div>
+                <div id="flexSection" class="analysis-section hidden">
+                    <div class="analysis-header">
+                        <span class="analysis-icon">📅</span>
+                        <span>Flex ±5 Days</span>
+                    </div>
+                    <div class="chart-box"><canvas id="flexChart"></canvas></div>
+                    <div id="flexSummary" class="flex-summary"></div>
+                </div>
+                <div id="contextSection" class="analysis-section hidden">
+                    <div class="analysis-header">
+                        <span class="analysis-icon">📰</span>
+                        <span>Travel Context</span>
+                    </div>
+                    <div id="contextSummary" class="analysis-reco"></div>
+                    <div id="contextList" class="context-list"></div>
+                </div>
                 <div id="analysisSection" class="analysis-section hidden">
                     <div class="analysis-header">
                         <span class="analysis-icon">🧠</span>
@@ -589,9 +643,13 @@
 
     <script>
         let chart = null;
+        let flexChart = null;
         let flights = [];
 
-        document.addEventListener('DOMContentLoaded', loadFlights);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFlights();
+            loadSchedule();
+        });
 
         async function readJsonSafe(response) {
             try { return await response.json(); }
@@ -602,14 +660,39 @@
             if (!payload) return fallback;
             if (typeof payload === 'string') return payload;
             if (payload.error) return payload.error;
+            if (payload.error_text) return payload.error_text;
             if (payload.message) return payload.message;
             return fallback;
         }
 
         function showForm() {
+            setFormMode('create');
             document.getElementById('formCard').classList.remove('hidden');
             document.getElementById('welcomeState').classList.add('hidden');
             document.getElementById('name').focus();
+        }
+
+        function setFormMode(mode, flight = null) {
+            const form = document.getElementById('flightForm');
+            const title = document.querySelector('#formCard h2');
+            const submit = form.querySelector('button[type=\"submit\"]');
+
+            form.dataset.mode = mode;
+            form.dataset.editId = flight?.id || '';
+
+            if (mode === 'edit' && flight) {
+                title.innerHTML = `
+                    <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 5v14M5 12h14\"/></svg>
+                    Update Flight
+                `;
+                submit.textContent = 'Update Flight';
+            } else {
+                title.innerHTML = `
+                    <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 5v14M5 12h14\"/></svg>
+                    Add Flight
+                `;
+                submit.textContent = 'Start Tracking';
+            }
         }
 
         function setFormError(message) {
@@ -626,6 +709,7 @@
 
         function hideForm() {
             setFormError(null);
+            setFormMode('create');
             document.getElementById('formCard').classList.add('hidden');
             updateView();
         }
@@ -634,6 +718,22 @@
             const has = flights.length > 0;
             document.getElementById('welcomeState').classList.toggle('hidden', has);
             document.getElementById('flightSection').classList.toggle('hidden', !has);
+        }
+
+        async function loadSchedule() {
+            try {
+                const r = await fetch('/api/schedule');
+                const data = await readJsonSafe(r);
+                if (!r.ok || !data) throw new Error('Failed to load schedule');
+
+                const el = document.getElementById('scheduleInfo');
+                const next = data.nextRunAt ? new Date(data.nextRunAt).toLocaleString() : 'Unknown';
+                el.textContent = `Next scheduled check: ${next} (${data.timezone || 'local'})`;
+                el.classList.remove('hidden');
+            } catch (e) {
+                // Non-blocking; leave hidden if schedule fails
+                console.error(e);
+            }
         }
 
         async function loadFlights() {
@@ -677,6 +777,8 @@
                         <button class="btn btn-ghost btn-sm" onclick="showHistory(${f.id},'${f.name.replace(/'/g,"\\'")}')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                         </button>
+                        <button class="btn btn-secondary btn-sm" onclick="checkNow(${f.id})">Check</button>
+                        <button class="btn btn-ghost btn-sm" onclick="editFlight(${f.id})">Update</button>
                         <button class="btn btn-secondary btn-sm" onclick="sendAlert(${f.id})" title="Send email alert">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                         </button>
@@ -686,12 +788,33 @@
             }).join('');
         }
 
+        function editFlight(id) {
+            const flight = flights.find(f => f.id === id);
+            if (!flight) return;
+
+            setFormMode('edit', flight);
+            document.getElementById('formCard').classList.remove('hidden');
+            document.getElementById('welcomeState').classList.add('hidden');
+
+            document.getElementById('name').value = flight.name || '';
+            document.getElementById('origin').value = flight.origin || '';
+            document.getElementById('destination').value = flight.destination || '';
+            document.getElementById('departureDate').value = flight.departure_date || '';
+            document.getElementById('returnDate').value = flight.return_date || '';
+            document.getElementById('passengers').value = flight.passengers || 1;
+            document.getElementById('cabinClass').value = flight.cabin_class || 'economy';
+            document.getElementById('preferredAirline').value = flight.preferred_airline || 'Delta';
+            document.getElementById('email').value = flight.notify_email || '';
+
+            document.getElementById('name').focus();
+        }
+
         document.getElementById('flightForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             setFormError(null);
             const btn = e.target.querySelector('button[type="submit"]');
             btn.classList.add('btn-loading');
-            btn.textContent = 'Adding...';
+            btn.textContent = 'Saving...';
 
             const data = {
                 name: document.getElementById('name').value,
@@ -705,9 +828,15 @@
                 notify_email: document.getElementById('email').value
             };
 
+            const mode = e.target.dataset.mode || 'create';
+            const editId = e.target.dataset.editId;
+            const isEdit = mode === 'edit' && editId;
+            const url = isEdit ? `/api/flights/${editId}` : '/api/flights';
+            const method = isEdit ? 'PUT' : 'POST';
+
             try {
-                const r = await fetch('/api/flights', {
-                    method: 'POST',
+                const r = await fetch(url, {
+                    method,
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify(data)
                 });
@@ -724,9 +853,62 @@
             }
             finally {
                 btn.classList.remove('btn-loading');
-                btn.textContent = 'Start Tracking';
+                btn.textContent = isEdit ? 'Update Flight' : 'Start Tracking';
             }
         });
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function pollJob(jobId, { onProgress, timeoutMs = 120000 } = {}) {
+            const start = Date.now();
+
+            while (true) {
+                const r = await fetch(`/api/jobs/${jobId}`);
+                const job = await readJsonSafe(r);
+                if (!r.ok) throw new Error(getApiErrorMessage(job, `Job failed (${r.status})`));
+
+                if (onProgress) onProgress(job);
+
+                if (job.status === 'success' || job.status === 'error') return job;
+                if (Date.now() - start > timeoutMs) throw new Error('Check timed out. Please try again.');
+
+                await sleep(1000);
+            }
+        }
+
+        function getActionButton() {
+            const evt = window.event;
+            return evt && evt.target ? evt.target.closest('button') : null;
+        }
+
+        async function checkNow(id) {
+            const btn = getActionButton();
+            const orig = btn ? btn.textContent : null;
+            if (btn) {
+                btn.classList.add('btn-loading');
+                btn.textContent = 'Checking...';
+            }
+
+            try {
+                const r = await fetch(`/api/flights/${id}/check`, { method: 'POST' });
+                const d = await readJsonSafe(r);
+                if (!r.ok) throw new Error(getApiErrorMessage(d, `Check failed (${r.status})`));
+
+                const job = await pollJob(d.jobId);
+                if (job.status === 'error') throw new Error(job.error_text || 'Check failed');
+
+                await loadFlights();
+            } catch (e) {
+                alert(e.message || 'Check failed');
+            } finally {
+                if (btn) {
+                    btn.classList.remove('btn-loading');
+                    btn.textContent = orig;
+                }
+            }
+        }
 
         async function del(id) {
             if (!confirm('Stop tracking?')) return;
@@ -735,10 +917,12 @@
         }
 
         async function sendAlert(id) {
-            const btn = event.target.closest('button');
-            const orig = btn.innerHTML;
-            btn.classList.add('btn-loading');
-            btn.innerHTML = '...';
+            const btn = getActionButton();
+            const orig = btn ? btn.innerHTML : null;
+            if (btn) {
+                btn.classList.add('btn-loading');
+                btn.innerHTML = '...';
+            }
             try {
                 const r = await fetch(`/api/flights/${id}/notify`, {method:'POST'});
                 const d = await readJsonSafe(r);
@@ -750,27 +934,38 @@
             } catch(e) {
                 alert(e.message || 'Error sending email');
             } finally {
-                btn.classList.remove('btn-loading');
-                btn.innerHTML = orig;
+                if (btn) {
+                    btn.classList.remove('btn-loading');
+                    btn.innerHTML = orig;
+                }
             }
         }
 
         async function checkPrices() {
-            const btn = event.target.closest('button');
-            btn.classList.add('btn-loading');
-            const o = btn.innerHTML;
-            btn.innerHTML = 'Checking...';
+            const btn = getActionButton();
+            const o = btn ? btn.innerHTML : null;
+            if (btn) {
+                btn.classList.add('btn-loading');
+                btn.innerHTML = 'Checking...';
+            }
             try {
-                const r = await fetch('/api/scrape', {method:'POST'});
+                const r = await fetch('/api/flights/check', {method:'POST'});
                 const d = await readJsonSafe(r);
-                if (!r.ok) {
-                    throw new Error(getApiErrorMessage(d, `Error (${r.status})`));
-                }
-                loadFlights();
+                if (!r.ok) throw new Error(getApiErrorMessage(d, `Error (${r.status})`));
+
+                const job = await pollJob(d.jobId);
+                if (job.status === 'error') throw new Error(job.error_text || 'Check failed');
+
+                await loadFlights();
             } catch(e) {
                 alert(e.message || 'Error');
             }
-            finally { btn.classList.remove('btn-loading'); btn.innerHTML = o; }
+            finally {
+                if (btn) {
+                    btn.classList.remove('btn-loading');
+                    btn.innerHTML = o;
+                }
+            }
         }
 
         async function showHistory(id, name) {
@@ -779,6 +974,8 @@
 
             // Reset analysis section
             document.getElementById('analysisSection').classList.add('hidden');
+            document.getElementById('flexSection').classList.add('hidden');
+            document.getElementById('contextSection').classList.add('hidden');
 
             const r = await fetch(`/api/flights/${id}/prices?days=60`);
             const p = await r.json();
@@ -826,6 +1023,10 @@
 
             // Fetch and display analysis
             loadAnalysis(id);
+
+            const flight = flights.find(f => f.id === id);
+            loadFlex(id, flight);
+            loadContext(id, flight);
         }
 
         async function loadAnalysis(id) {
@@ -841,9 +1042,9 @@
 
             try {
                 const r = await fetch(`/api/flights/${id}/analysis`);
-                const a = await r.json();
+                const a = await readJsonSafe(r);
 
-                if (a.error) throw new Error(a.error);
+                if (!r.ok || a?.error) throw new Error(getApiErrorMessage(a, `Analysis failed (${r.status})`));
 
                 const actionClass = a.action.toLowerCase().replace(' ', '-');
                 const insightsHtml = a.insights.length > 0
@@ -872,6 +1073,160 @@
                     <div class="analysis-reco" style="color:var(--text-muted)">Unable to load analysis. Try again later.</div>
                 `;
             }
+        }
+
+        async function loadFlex(id, flight) {
+            const section = document.getElementById('flexSection');
+            const summary = document.getElementById('flexSummary');
+            section.classList.remove('hidden');
+            summary.textContent = 'Loading flex prices...';
+
+            try {
+                const r = await fetch(`/api/flights/${id}/flex?window=5&maxAgeHours=6`);
+                const d = await readJsonSafe(r);
+                if (!r.ok) throw new Error(getApiErrorMessage(d, `Flex failed (${r.status})`));
+
+                if (d.needsScan) {
+                    await startFlexScan(id);
+                    return;
+                }
+
+                renderFlexChart(d.rows || [], flight);
+            } catch (e) {
+                summary.textContent = e.message || 'Unable to load flex prices';
+            }
+        }
+
+        async function startFlexScan(id) {
+            const summary = document.getElementById('flexSummary');
+            summary.textContent = 'Scanning ±5 days...';
+
+            const r = await fetch(`/api/flights/${id}/flex-scan?window=5`, { method: 'POST' });
+            const d = await readJsonSafe(r);
+            if (!r.ok) throw new Error(getApiErrorMessage(d, `Flex scan failed (${r.status})`));
+
+            const job = await pollJob(d.jobId, {
+                onProgress: (j) => {
+                    summary.textContent = `Scanning ±5 days... ${j.progress_current || 0}/${j.progress_total || 11}`;
+                }
+            });
+
+            if (job.status === 'error') {
+                throw new Error(job.error_text || 'Flex scan failed');
+            }
+
+            await loadFlex(id, flights.find(f => f.id === id));
+        }
+
+        function renderFlexChart(rows, flight) {
+            const summary = document.getElementById('flexSummary');
+            if (!rows.length) {
+                summary.textContent = 'No flex data yet.';
+                return;
+            }
+
+            const sorted = rows.slice().sort((a, b) => a.departure_date.localeCompare(b.departure_date));
+            const labels = sorted.map(r => new Date(r.departure_date).toLocaleDateString());
+            const prices = sorted.map(r => r.price || null);
+            const minPrice = Math.min(...prices.filter(p => Number.isFinite(p)));
+            const colors = sorted.map(r => (r.price === minPrice ? '#22c55e' : '#eab308'));
+
+            const ctx = document.getElementById('flexChart').getContext('2d');
+            if (flexChart) flexChart.destroy();
+
+            flexChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        data: prices,
+                        backgroundColor: colors
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { ticks: { callback: v => '$' + v, color: '#52525b' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        x: { ticks: { color: '#52525b' }, grid: { display: false } }
+                    }
+                }
+            });
+
+            const baseRow = flight ? sorted.find(r => r.departure_date === flight.departure_date) : null;
+            const bestRow = sorted.find(r => r.price === minPrice);
+            if (baseRow && bestRow && baseRow.price && bestRow.price) {
+                const baseDate = new Date(baseRow.departure_date);
+                const bestDate = new Date(bestRow.departure_date);
+                const deltaDays = Math.round((bestDate - baseDate) / (1000 * 60 * 60 * 24));
+                const savings = Math.max(0, Math.round(baseRow.price - bestRow.price));
+                summary.textContent = savings > 0
+                    ? `You could save ~$${savings} by shifting ${deltaDays > 0 ? '+' : ''}${deltaDays} days.`
+                    : `Cheapest window price is $${bestRow.price} on ${bestRow.departure_date}.`;
+            } else if (bestRow) {
+                summary.textContent = `Cheapest window price is $${bestRow.price} on ${bestRow.departure_date}.`;
+            } else {
+                summary.textContent = 'Flex data loaded.';
+            }
+        }
+
+        async function loadContext(id) {
+            const section = document.getElementById('contextSection');
+            const summary = document.getElementById('contextSummary');
+            const list = document.getElementById('contextList');
+            section.classList.remove('hidden');
+            summary.textContent = 'Loading travel context...';
+            list.innerHTML = '';
+
+            try {
+                const r = await fetch(`/api/flights/${id}/context?maxAgeHours=6`);
+                const d = await readJsonSafe(r);
+                if (!r.ok) throw new Error(getApiErrorMessage(d, `Context failed (${r.status})`));
+
+                if (d.needsRefresh) {
+                    await startContextRefresh(id);
+                    return;
+                }
+
+                renderContext(d.context);
+            } catch (e) {
+                summary.textContent = e.message || 'Unable to load context';
+            }
+        }
+
+        async function startContextRefresh(id) {
+            const summary = document.getElementById('contextSummary');
+            summary.textContent = 'Fetching headlines...';
+
+            const r = await fetch(`/api/flights/${id}/context-refresh`, { method: 'POST' });
+            const d = await readJsonSafe(r);
+            if (!r.ok) throw new Error(getApiErrorMessage(d, `Context refresh failed (${r.status})`));
+
+            const job = await pollJob(d.jobId);
+            if (job.status === 'error') throw new Error(job.error_text || 'Context refresh failed');
+
+            await loadContext(id);
+        }
+
+        function renderContext(context) {
+            const summary = document.getElementById('contextSummary');
+            const list = document.getElementById('contextList');
+
+            if (!context) {
+                summary.textContent = 'No context available.';
+                list.innerHTML = '';
+                return;
+            }
+
+            summary.textContent = context.holidayNote || context.summary || 'Recent travel headlines.';
+            const items = (context.headlines || []).slice(0, 5).map(h => `
+                <div class="context-item">
+                    <a href="${h.url}" target="_blank" rel="noopener">${h.title}</a>
+                    ${h.source ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;">${h.source}</div>` : ''}
+                </div>
+            `);
+            list.innerHTML = items.join('') || '<div class="context-item">No headlines found.</div>';
         }
 
         function closeModal() { document.getElementById('modal').classList.remove('open'); }

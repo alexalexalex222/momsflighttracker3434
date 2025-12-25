@@ -66,12 +66,24 @@ Create a `.env` file:
 RESEND_API_KEY=re_xxxxx  # For email notifications
 ```
 
+Zapier webhook (recommended email path):
+```
+ZAPIER_WEBHOOK_URL=https://hooks.zapier.com/hooks/catch/xxxx/yyyy
+```
+
+Amadeus (optional; improves cabin-class accuracy):
+```
+AMADEUS_CLIENT_ID=...
+AMADEUS_CLIENT_SECRET=...
+```
+
 ### Railway Deployment Notes
 
 - `data/` and `flights.db` are intentionally gitignored, so production needs to create the SQLite DB at runtime.
 - Set `RESEND_API_KEY` in Railway service variables (don’t commit it).
 - If you want the DB to survive redeploys/restarts, attach a Railway Volume and set `DB_PATH` to a path inside that volume.
 - If you’re using Chromium via Nixpacks `nixPkgs = ["chromium", ...]`, set `PUPPETEER_EXECUTABLE_PATH=chromium` (don’t use `/usr/bin/chromium-browser`, it’s often a snap stub).
+- For Zapier email delivery, set `ZAPIER_WEBHOOK_URL` in Railway Variables and restart the service.
 
 ## Project Structure
 

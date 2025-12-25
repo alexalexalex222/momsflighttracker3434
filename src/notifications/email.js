@@ -14,8 +14,57 @@ function getResendClient() {
     return resendClient;
 }
 
-export async function sendPriceDropAlert({ to, flightName, route, currentPrice, previousPrice, lowestPrice, airline, checkUrl, analysis }) {
-    const percentDrop = ((previousPrice - currentPrice) / previousPrice * 100).toFixed(1);
+async function sendEmailViaZapier({ to, subject, html, text, meta }) {
+    const url = process.env.ZAPIER_WEBHOOK_URL;
+    if (!url) {
+        throw new Error('Missing ZAPIER_WEBHOOK_URL. Set it in your Railway service Variables.');
+    }
+
+    const payload = {
+        to,
+        subject,
+        html,
+        text: text || '',
+        meta: meta || {}
+    };
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`Zapier webhook error (${response.status}): ${body.slice(0, 200)}`);
+    }
+
+    return { ok: true };
+}
+
+function getEmailProvider() {
+    if (process.env.EMAIL_PROVIDER) return process.env.EMAIL_PROVIDER;
+    if (process.env.ZAPIER_WEBHOOK_URL) return 'zapier';
+    if (process.env.RESEND_API_KEY || process.env.RESEND_KEY) return 'resend';
+    return 'none';
+}
+
+export async function sendPriceDropAlert({
+    to,
+    flightName,
+    route,
+    currentPrice,
+    previousPrice,
+    lowestPrice,
+    airline,
+    checkUrl,
+    analysis,
+    flexSuggestion,
+    context,
+    nextRunAt
+}) {
+    const safePrev = Number.isFinite(previousPrice) && previousPrice > 0 ? previousPrice : currentPrice;
+    const percentDrop = safePrev ? (((safePrev - currentPrice) / safePrev) * 100).toFixed(1) : '0.0';
 
     // Build insights section if analysis provided
     let insightsHtml = '';
@@ -29,6 +78,34 @@ export async function sendPriceDropAlert({ to, flightName, route, currentPrice, 
             </div>
         `;
     }
+
+    const flexHtml = flexSuggestion ? `
+        <div style="margin-top: 16px; padding: 12px; background: #0f172a; border-radius: 8px; color: #e2e8f0;">
+            <p style="margin: 0 0 6px 0; font-weight: 600; color: #f8fafc;">Flex ±5 Days</p>
+            <p style="margin: 0; font-size: 13px; color: #cbd5f5;">
+                Cheapest window price: <strong>$${flexSuggestion.price}</strong> on ${flexSuggestion.departure_date}
+                ${flexSuggestion.savings ? `(save ~$${flexSuggestion.savings})` : ''}
+            </p>
+        </div>
+    ` : '';
+
+    const contextHtml = context?.headlines?.length ? `
+        <div style="margin-top: 16px; padding: 12px; background: #0f172a; border-radius: 8px; color: #e2e8f0;">
+            <p style="margin: 0 0 6px 0; font-weight: 600; color: #f8fafc;">Travel Context</p>
+            ${context.holidayNote ? `<p style="margin: 0 0 8px 0; font-size: 13px; color: #facc15;">${context.holidayNote}</p>` : ''}
+            ${context.headlines.slice(0, 3).map(h => `
+                <p style="margin: 4px 0; font-size: 13px;">
+                    • <a href="${h.url}" style="color:#93c5fd; text-decoration:none;">${h.title}</a>
+                </p>
+            `).join('')}
+        </div>
+    ` : '';
+
+    const nextRunHtml = nextRunAt ? `
+        <p style="margin-top: 16px; font-size: 12px; color: #94a3b8;">
+            Next scheduled check: ${nextRunAt}
+        </p>
+    ` : '';
 
     const html = `
     <!DOCTYPE html>
@@ -70,6 +147,9 @@ export async function sendPriceDropAlert({ to, flightName, route, currentPrice, 
                 </div>
 
                 ${insightsHtml}
+                ${flexHtml}
+                ${contextHtml}
+                ${nextRunHtml}
 
                 <a href="https://www.google.com/travel/flights" class="cta">
                     Book Now on Google Flights
@@ -83,16 +163,27 @@ export async function sendPriceDropAlert({ to, flightName, route, currentPrice, 
     </html>
     `;
 
+    const subject = `Price Drop! ${flightName} now $${currentPrice} (↓${percentDrop}%)`;
+    const provider = getEmailProvider();
+
     try {
-        const resend = getResendClient();
-        const result = await resend.emails.send({
-            from: 'Flight Tracker <onboarding@resend.dev>',
-            to: to,
-            subject: `Price Drop! ${flightName} now $${currentPrice} (↓${percentDrop}%)`,
-            html: html
-        });
-        console.log('Email sent:', result);
-        return result;
+        if (provider === 'zapier') {
+            return await sendEmailViaZapier({ to, subject, html, meta: { flightName, route } });
+        }
+
+        if (provider === 'resend') {
+            const resend = getResendClient();
+            const result = await resend.emails.send({
+                from: 'Flight Tracker <onboarding@resend.dev>',
+                to: to,
+                subject,
+                html: html
+            });
+            console.log('Email sent:', result);
+            return result;
+        }
+
+        throw new Error('No email provider configured. Set ZAPIER_WEBHOOK_URL or RESEND_API_KEY.');
     } catch (error) {
         console.error('Email error:', error);
         throw error;
@@ -147,15 +238,25 @@ export async function sendWeeklySummary({ to, flights }) {
     </html>
     `;
 
+    const provider = getEmailProvider();
+
     try {
-        const resend = getResendClient();
-        const result = await resend.emails.send({
-            from: 'Flight Tracker <onboarding@resend.dev>',
-            to: to,
-            subject: 'Your Weekly Flight Price Summary',
-            html: html
-        });
-        return result;
+        if (provider === 'zapier') {
+            return await sendEmailViaZapier({ to, subject: 'Your Weekly Flight Price Summary', html, meta: { type: 'weekly' } });
+        }
+
+        if (provider === 'resend') {
+            const resend = getResendClient();
+            const result = await resend.emails.send({
+                from: 'Flight Tracker <onboarding@resend.dev>',
+                to: to,
+                subject: 'Your Weekly Flight Price Summary',
+                html: html
+            });
+            return result;
+        }
+
+        throw new Error('No email provider configured. Set ZAPIER_WEBHOOK_URL or RESEND_API_KEY.');
     } catch (error) {
         console.error('Email error:', error);
         throw error;

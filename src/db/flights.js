@@ -54,10 +54,67 @@ export function addFlight({
     return result.lastInsertRowid;
 }
 
+export function getFlight(flightId) {
+    const db = getDb();
+    const flight = db.prepare(`SELECT * FROM flights WHERE id = ?`).get(flightId);
+    db.close();
+    return flight;
+}
+
+export function updateFlight(flightId, patch) {
+    const allowed = new Map([
+        ['name', 'name'],
+        ['origin', 'origin'],
+        ['destination', 'destination'],
+        ['departure_date', 'departure_date'],
+        ['return_date', 'return_date'],
+        ['passengers', 'passengers'],
+        ['cabin_class', 'cabin_class'],
+        ['preferred_airline', 'preferred_airline'],
+        ['notify_email', 'notify_email'],
+        ['price_threshold', 'price_threshold'],
+        ['is_active', 'is_active']
+    ]);
+
+    const keys = Object.keys(patch || {}).filter(k => allowed.has(k));
+    if (!keys.length) return null;
+
+    const assignments = keys.map(k => `${allowed.get(k)} = ?`).join(', ');
+    const values = keys.map(k => patch[k]);
+
+    const db = getDb();
+    const stmt = db.prepare(`
+        UPDATE flights
+        SET ${assignments}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    `);
+    stmt.run(...values, flightId);
+    const updated = db.prepare(`SELECT * FROM flights WHERE id = ?`).get(flightId);
+    db.close();
+    return updated;
+}
+
+export function updateFlightCheckStatus(flightId, status, errorText = null) {
+    const db = getDb();
+    db.prepare(`
+        UPDATE flights
+        SET last_checked_at = CURRENT_TIMESTAMP,
+            last_check_status = ?,
+            last_check_error = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    `).run(status, errorText, flightId);
+    db.close();
+}
+
 // Get a specific flight with its price history
 export function getFlightWithPrices(flightId) {
     const db = getDb();
     const flight = db.prepare(`SELECT * FROM flights WHERE id = ?`).get(flightId);
+    if (!flight) {
+        db.close();
+        return null;
+    }
     const prices = db.prepare(`
         SELECT * FROM prices WHERE flight_id = ? ORDER BY checked_at DESC
     `).all(flightId);
@@ -66,12 +123,23 @@ export function getFlightWithPrices(flightId) {
 }
 
 // Save a new price record
-export function savePrice({ flight_id, price, currency, airline, stops, duration_minutes, departure_time, arrival_time, raw_data }) {
+export function savePrice({ flight_id, price, currency, airline, stops, duration_minutes, departure_time, arrival_time, raw_data, source }) {
     const db = getDb();
     const result = db.prepare(`
-        INSERT INTO prices (flight_id, price, currency, airline, stops, duration_minutes, departure_time, arrival_time, raw_data)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(flight_id, price, currency || 'USD', airline || null, stops ?? null, duration_minutes || null, departure_time || null, arrival_time || null, raw_data ? JSON.stringify(raw_data) : null);
+        INSERT INTO prices (flight_id, price, currency, airline, stops, duration_minutes, departure_time, arrival_time, raw_data, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+        flight_id,
+        price,
+        currency || 'USD',
+        airline || null,
+        stops ?? null,
+        duration_minutes || null,
+        departure_time || null,
+        arrival_time || null,
+        raw_data ? JSON.stringify(raw_data) : null,
+        source || 'google_flights'
+    );
     db.close();
     return result.lastInsertRowid;
 }
