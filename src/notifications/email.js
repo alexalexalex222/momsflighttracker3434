@@ -1,6 +1,18 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resendClient = null;
+
+function getResendClient() {
+    if (resendClient) return resendClient;
+
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+        throw new Error('Missing RESEND_API_KEY. Set it in your Railway service Variables.');
+    }
+
+    resendClient = new Resend(apiKey);
+    return resendClient;
+}
 
 export async function sendPriceDropAlert({ to, flightName, route, currentPrice, previousPrice, lowestPrice, airline, checkUrl, analysis }) {
     const percentDrop = ((previousPrice - currentPrice) / previousPrice * 100).toFixed(1);
@@ -72,6 +84,7 @@ export async function sendPriceDropAlert({ to, flightName, route, currentPrice, 
     `;
 
     try {
+        const resend = getResendClient();
         const result = await resend.emails.send({
             from: 'Flight Tracker <onboarding@resend.dev>',
             to: to,
@@ -135,6 +148,7 @@ export async function sendWeeklySummary({ to, flights }) {
     `;
 
     try {
+        const resend = getResendClient();
         const result = await resend.emails.send({
             from: 'Flight Tracker <onboarding@resend.dev>',
             to: to,

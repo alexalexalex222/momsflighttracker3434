@@ -11,12 +11,45 @@ export function getActiveFlights() {
 }
 
 // Add a new flight to track
-export function addFlight({ name, origin, destination, departure_date, return_date, passengers, cabin_class, notify_email, price_threshold }) {
+export function addFlight({
+    name,
+    origin,
+    destination,
+    departure_date,
+    return_date,
+    passengers,
+    cabin_class,
+    preferred_airline,
+    notify_email,
+    price_threshold
+}) {
     const db = getDb();
     const result = db.prepare(`
-        INSERT INTO flights (name, origin, destination, departure_date, return_date, passengers, cabin_class, notify_email, price_threshold)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(name, origin, destination, departure_date, return_date || null, passengers || 1, cabin_class || 'economy', notify_email || null, price_threshold || null);
+        INSERT INTO flights (
+            name,
+            origin,
+            destination,
+            departure_date,
+            return_date,
+            passengers,
+            cabin_class,
+            preferred_airline,
+            notify_email,
+            price_threshold
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+        name,
+        origin,
+        destination,
+        departure_date,
+        return_date || null,
+        passengers || 1,
+        cabin_class || 'economy',
+        preferred_airline || 'any',
+        notify_email || null,
+        price_threshold || null
+    );
     db.close();
     return result.lastInsertRowid;
 }

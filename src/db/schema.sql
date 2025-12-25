@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS flights (
     return_date TEXT,                      -- "2025-09-25" (optional for one-way)
     passengers INTEGER DEFAULT 1,
     cabin_class TEXT DEFAULT 'economy',    -- economy, premium_economy, business, first
+    preferred_airline TEXT DEFAULT 'any',  -- 'any', 'Delta', 'United', etc (used by scraper)
     is_active INTEGER DEFAULT 1,
     notify_email TEXT,                     -- Email for price alerts
     price_threshold REAL,                  -- Alert if price drops below this

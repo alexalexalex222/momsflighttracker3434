@@ -239,6 +239,17 @@
             border-top: 1px solid var(--border);
         }
 
+        .form-error {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            background: var(--red-dim);
+            color: #fecaca;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
         /* Flight List */
         .section-header {
             display: flex;
@@ -515,6 +526,13 @@
                         </select>
                     </div>
                     <div class="form-group full">
+                        <label>Preferred Airline</label>
+                        <select id="preferredAirline">
+                            <option value="Delta" selected>Delta (preferred)</option>
+                            <option value="any">Any (cheapest)</option>
+                        </select>
+                    </div>
+                    <div class="form-group full">
                         <label>Email for Alerts</label>
                         <input type="email" id="email" placeholder="you@email.com" required>
                     </div>
@@ -523,6 +541,7 @@
                     <button type="submit" class="btn btn-primary">Start Tracking</button>
                     <button type="button" class="btn btn-ghost" onclick="hideForm()">Cancel</button>
                 </div>
+                <div id="formError" class="form-error hidden"></div>
             </form>
         </div>
 
@@ -574,13 +593,39 @@
 
         document.addEventListener('DOMContentLoaded', loadFlights);
 
+        async function readJsonSafe(response) {
+            try { return await response.json(); }
+            catch { return null; }
+        }
+
+        function getApiErrorMessage(payload, fallback = 'Error') {
+            if (!payload) return fallback;
+            if (typeof payload === 'string') return payload;
+            if (payload.error) return payload.error;
+            if (payload.message) return payload.message;
+            return fallback;
+        }
+
         function showForm() {
             document.getElementById('formCard').classList.remove('hidden');
             document.getElementById('welcomeState').classList.add('hidden');
             document.getElementById('name').focus();
         }
 
+        function setFormError(message) {
+            const el = document.getElementById('formError');
+            if (!el) return;
+            if (!message) {
+                el.textContent = '';
+                el.classList.add('hidden');
+                return;
+            }
+            el.textContent = message;
+            el.classList.remove('hidden');
+        }
+
         function hideForm() {
+            setFormError(null);
             document.getElementById('formCard').classList.add('hidden');
             updateView();
         }
@@ -594,10 +639,17 @@
         async function loadFlights() {
             try {
                 const r = await fetch('/api/flights');
-                flights = await r.json();
+                const data = await readJsonSafe(r);
+                if (!r.ok) {
+                    throw new Error(getApiErrorMessage(data, `Failed to load flights (${r.status})`));
+                }
+                flights = Array.isArray(data) ? data : [];
                 render();
                 updateView();
-            } catch(e) { console.error(e); }
+            } catch(e) {
+                console.error(e);
+                alert(e.message || 'Failed to load flights');
+            }
         }
 
         function render() {
@@ -636,6 +688,7 @@
 
         document.getElementById('flightForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            setFormError(null);
             const btn = e.target.querySelector('button[type="submit"]');
             btn.classList.add('btn-loading');
             btn.textContent = 'Adding...';
@@ -648,6 +701,7 @@
                 return_date: document.getElementById('returnDate').value || null,
                 passengers: +document.getElementById('passengers').value,
                 cabin_class: document.getElementById('cabinClass').value,
+                preferred_airline: document.getElementById('preferredAirline').value,
                 notify_email: document.getElementById('email').value
             };
 
@@ -657,12 +711,17 @@
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify(data)
                 });
+                const d = await readJsonSafe(r);
                 if (r.ok) {
                     e.target.reset();
                     hideForm();
                     loadFlights();
-                } else alert('Error');
-            } catch(e) { alert('Error'); }
+                } else {
+                    setFormError(getApiErrorMessage(d, `Error (${r.status})`));
+                }
+            } catch(e) {
+                setFormError(e.message || 'Error');
+            }
             finally {
                 btn.classList.remove('btn-loading');
                 btn.textContent = 'Start Tracking';
@@ -682,14 +741,14 @@
             btn.innerHTML = '...';
             try {
                 const r = await fetch(`/api/flights/${id}/notify`, {method:'POST'});
-                const d = await r.json();
+                const d = await readJsonSafe(r);
                 if (r.ok) {
                     alert('Email sent! Check your inbox.');
                 } else {
-                    alert(d.error || 'Failed to send email');
+                    alert(getApiErrorMessage(d, `Failed to send email (${r.status})`));
                 }
             } catch(e) {
-                alert('Error sending email');
+                alert(e.message || 'Error sending email');
             } finally {
                 btn.classList.remove('btn-loading');
                 btn.innerHTML = orig;
@@ -701,8 +760,16 @@
             btn.classList.add('btn-loading');
             const o = btn.innerHTML;
             btn.innerHTML = 'Checking...';
-            try { await fetch('/api/scrape', {method:'POST'}); loadFlights(); }
-            catch(e) { alert('Error'); }
+            try {
+                const r = await fetch('/api/scrape', {method:'POST'});
+                const d = await readJsonSafe(r);
+                if (!r.ok) {
+                    throw new Error(getApiErrorMessage(d, `Error (${r.status})`));
+                }
+                loadFlights();
+            } catch(e) {
+                alert(e.message || 'Error');
+            }
             finally { btn.classList.remove('btn-loading'); btn.innerHTML = o; }
         }
 
