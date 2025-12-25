@@ -4,6 +4,75 @@ import { getDb } from '../db/setup.js';
 
 puppeteer.use(StealthPlugin());
 
+function getBrowserExecutableCandidates() {
+    const candidates = [];
+
+    const envCandidates = [
+        process.env.PUPPETEER_EXECUTABLE_PATH,
+        process.env.CHROME_BIN,
+        process.env.CHROMIUM_BIN
+    ].filter(Boolean).map(s => String(s).trim()).filter(Boolean);
+
+    candidates.push(...envCandidates);
+
+    // Common names on PATH in container environments (nixpacks, apt, etc)
+    candidates.push('chromium');
+    candidates.push('google-chrome-stable');
+    candidates.push('google-chrome');
+    candidates.push('chromium-browser');
+
+    // Common absolute paths (last-resort)
+    candidates.push('/usr/bin/chromium');
+    candidates.push('/usr/bin/google-chrome');
+    candidates.push('/usr/bin/chromium-browser');
+
+    return [...new Set(candidates)];
+}
+
+async function launchBrowser() {
+    const args = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-blink-features=AutomationControlled'
+    ];
+
+    const errors = [];
+
+    // First try: let puppeteer pick (works if Chromium was downloaded during install)
+    try {
+        const browser = await puppeteer.launch({ headless: 'new', args });
+        console.log('[Scraper] Browser launched (bundled Chromium)');
+        return browser;
+    } catch (e) {
+        errors.push({ candidate: '(bundled)', error: e?.message || String(e) });
+    }
+
+    // Next: try known executables
+    for (const executablePath of getBrowserExecutableCandidates()) {
+        try {
+            const browser = await puppeteer.launch({ headless: 'new', executablePath, args });
+            console.log(`[Scraper] Browser launched (${executablePath})`);
+            return browser;
+        } catch (e) {
+            const message = e?.message || String(e);
+            errors.push({ candidate: executablePath, error: message });
+        }
+    }
+
+    const details = errors
+        .slice(0, 6)
+        .map(x => `${x.candidate}: ${x.error.split('\n')[0]}`)
+        .join(' | ');
+
+    const hint =
+        'Unable to launch Chromium. ' +
+        'On Railway + nixpacks, set PUPPETEER_EXECUTABLE_PATH=chromium (not /usr/bin/chromium-browser).';
+
+    throw new Error(`${hint}\nTried: ${details}`);
+}
+
 // Scrape a single flight from Google Flights
 async function scrapeFlight(browser, flight) {
     const page = await browser.newPage();
@@ -150,17 +219,7 @@ export async function scrapeAllFlights() {
 
     console.log(`[Scraper] Checking ${flights.length} flight(s)...`);
 
-    const browser = await puppeteer.launch({
-        headless: 'new',
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--disable-blink-features=AutomationControlled'
-        ]
-    });
+    const browser = await launchBrowser();
 
     const results = [];
 

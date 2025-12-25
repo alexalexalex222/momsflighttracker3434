@@ -71,7 +71,7 @@ RESEND_API_KEY=re_xxxxx  # For email notifications
 - `data/` and `flights.db` are intentionally gitignored, so production needs to create the SQLite DB at runtime.
 - Set `RESEND_API_KEY` in Railway service variables (don’t commit it).
 - If you want the DB to survive redeploys/restarts, attach a Railway Volume and set `DB_PATH` to a path inside that volume.
-- If you’re using system Chromium via Nixpacks, set `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser`.
+- If you’re using Chromium via Nixpacks `nixPkgs = ["chromium", ...]`, set `PUPPETEER_EXECUTABLE_PATH=chromium` (don’t use `/usr/bin/chromium-browser`, it’s often a snap stub).
 
 ## Project Structure
 

@@ -9,4 +9,6 @@ cmd = "npm run dev"
 
 [variables]
 PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
-PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium-browser"
+# Nixpacks installs Chromium via nixPkgs (available on PATH as `chromium`).
+# Do NOT use /usr/bin/chromium-browser (often a snap stub that fails in containers).
+PUPPETEER_EXECUTABLE_PATH = "chromium"
