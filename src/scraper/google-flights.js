@@ -1,8 +1,35 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { accessSync, constants } from 'fs';
+import { delimiter, isAbsolute, join } from 'path';
 import { getDb } from '../db/setup.js';
 
 puppeteer.use(StealthPlugin());
+
+function resolveExecutablePath(candidate) {
+    if (!candidate) return null;
+    const c = String(candidate).trim();
+    if (!c) return null;
+    if (c === ':memory:') return c;
+
+    // Puppeteer expects an absolute path. If we were given a command name,
+    // resolve it from PATH.
+    if (!isAbsolute(c) && !c.includes('/')) {
+        const pathEnv = process.env.PATH || '';
+        for (const dir of pathEnv.split(delimiter)) {
+            if (!dir) continue;
+            const full = join(dir, c);
+            try {
+                accessSync(full, constants.X_OK);
+                return full;
+            } catch {
+                // continue
+            }
+        }
+    }
+
+    return c;
+}
 
 function getBrowserExecutableCandidates() {
     const candidates = [];
@@ -51,13 +78,15 @@ async function launchBrowser() {
 
     // Next: try known executables
     for (const executablePath of getBrowserExecutableCandidates()) {
+        const resolved = resolveExecutablePath(executablePath);
+        if (!resolved) continue;
         try {
-            const browser = await puppeteer.launch({ headless: 'new', executablePath, args });
-            console.log(`[Scraper] Browser launched (${executablePath})`);
+            const browser = await puppeteer.launch({ headless: 'new', executablePath: resolved, args });
+            console.log(`[Scraper] Browser launched (${resolved})`);
             return browser;
         } catch (e) {
             const message = e?.message || String(e);
-            errors.push({ candidate: executablePath, error: message });
+            errors.push({ candidate: resolved, error: message });
         }
     }
 
@@ -68,7 +97,7 @@ async function launchBrowser() {
 
     const hint =
         'Unable to launch Chromium. ' +
-        'On Railway + nixpacks, set PUPPETEER_EXECUTABLE_PATH=chromium (not /usr/bin/chromium-browser).';
+        'On Railway + nixpacks, install chromium and set PUPPETEER_EXECUTABLE_PATH=chromium (not /usr/bin/chromium-browser).';
 
     throw new Error(`${hint}\nTried: ${details}`);
 }
