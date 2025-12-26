@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { accessSync, constants } from 'fs';
 import { delimiter, isAbsolute, join } from 'path';
-import { getDb } from '../db/setup.js';
+import { getActiveFlights, savePrice } from '../db/postgres.js';
 
 puppeteer.use(StealthPlugin());
 
@@ -300,16 +300,11 @@ export async function getGoogleFlightQuote(flight, browser = null) {
 // Main scrape function
 export async function scrapeAllFlights() {
     console.log('[Scraper] Starting flight price check...');
-    const db = getDb();
 
-    const flights = db.prepare(`
-        SELECT id, name, origin, destination, departure_date, return_date, passengers, cabin_class, preferred_airline
-        FROM flights WHERE is_active = 1
-    `).all();
+    const flights = await getActiveFlights();
 
     if (flights.length === 0) {
         console.log('[Scraper] No flights to check');
-        db.close();
         return { success: true, flights: 0, results: [] };
     }
 
@@ -324,10 +319,12 @@ export async function scrapeAllFlights() {
 
         if (result.success && result.price) {
             // Save to database
-            db.prepare(`
-                INSERT INTO prices (flight_id, price, currency, airline)
-                VALUES (?, ?, 'USD', ?)
-            `).run(flight.id, result.price, result.airline);
+            await savePrice({
+                flight_id: flight.id,
+                price: result.price,
+                currency: 'USD',
+                airline: result.airline
+            });
 
             results.push({
                 flight_id: flight.id,
@@ -350,7 +347,6 @@ export async function scrapeAllFlights() {
     }
 
     await browser.close();
-    db.close();
 
     console.log('[Scraper] Complete!');
     return { success: true, flights: flights.length, results };

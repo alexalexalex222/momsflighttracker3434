@@ -1,7 +1,13 @@
-import { createJob, updateJob } from '../db/jobs.js';
-import { getActiveFlights, getFlight, savePrice, updateFlightCheckStatus } from '../db/flights.js';
-import { upsertFlexPrice } from '../db/flex.js';
-import { upsertContext } from '../db/contexts.js';
+import {
+    createJob,
+    updateJob,
+    getActiveFlights,
+    getFlight,
+    savePrice,
+    updateFlightCheckStatus,
+    upsertFlexPrice,
+    upsertContext
+} from '../db/postgres.js';
 import { getPriceQuote } from '../pricing/engine.js';
 import { fetchTravelContext } from '../context/context.js';
 
@@ -19,12 +25,12 @@ function nowIso() {
 }
 
 async function runCheckForFlight(jobId, flight) {
-    updateJob(jobId, { status: 'running', started_at: nowIso() });
-    updateFlightCheckStatus(flight.id, 'running', null);
+    await updateJob(jobId, { status: 'running', started_at: nowIso() });
+    await updateFlightCheckStatus(flight.id, 'running', null);
 
     try {
         const quote = await getPriceQuote(flight);
-        savePrice({
+        await savePrice({
             flight_id: flight.id,
             price: quote.price,
             currency: quote.currency || 'USD',
@@ -33,8 +39,8 @@ async function runCheckForFlight(jobId, flight) {
             source: quote.source || null
         });
 
-        updateFlightCheckStatus(flight.id, 'ok', null);
-        updateJob(jobId, {
+        await updateFlightCheckStatus(flight.id, 'ok', null);
+        await updateJob(jobId, {
             status: 'success',
             progress_current: 1,
             progress_total: 1,
@@ -48,8 +54,8 @@ async function runCheckForFlight(jobId, flight) {
         });
     } catch (error) {
         const message = error?.message || String(error);
-        updateFlightCheckStatus(flight.id, 'error', message);
-        updateJob(jobId, {
+        await updateFlightCheckStatus(flight.id, 'error', message);
+        await updateJob(jobId, {
             status: 'error',
             error_text: message,
             finished_at: nowIso()
@@ -59,9 +65,9 @@ async function runCheckForFlight(jobId, flight) {
 
 export function runCheckNowJob(jobId, flightId) {
     enqueue(async () => {
-        const flight = getFlight(flightId);
+        const flight = await getFlight(flightId);
         if (!flight) {
-            updateJob(jobId, {
+            await updateJob(jobId, {
                 status: 'error',
                 error_text: 'Flight not found',
                 finished_at: nowIso()
@@ -75,8 +81,8 @@ export function runCheckNowJob(jobId, flightId) {
 
 export function runCheckAllJob(jobId) {
     enqueue(async () => {
-        const flights = getActiveFlights();
-        updateJob(jobId, {
+        const flights = await getActiveFlights();
+        await updateJob(jobId, {
             status: 'running',
             started_at: nowIso(),
             progress_total: flights.length,
@@ -87,7 +93,7 @@ export function runCheckAllJob(jobId) {
         for (const flight of flights) {
             try {
                 const quote = await getPriceQuote(flight);
-                savePrice({
+                await savePrice({
                     flight_id: flight.id,
                     price: quote.price,
                     currency: quote.currency || 'USD',
@@ -95,25 +101,25 @@ export function runCheckAllJob(jobId) {
                     raw_data: quote.raw_data || null,
                     source: quote.source || null
                 });
-                updateFlightCheckStatus(flight.id, 'ok', null);
+                await updateFlightCheckStatus(flight.id, 'ok', null);
             } catch (error) {
                 const message = error?.message || String(error);
-                updateFlightCheckStatus(flight.id, 'error', message);
+                await updateFlightCheckStatus(flight.id, 'error', message);
             }
 
             current += 1;
-            updateJob(jobId, { progress_current: current });
+            await updateJob(jobId, { progress_current: current });
         }
 
-        updateJob(jobId, { status: 'success', finished_at: nowIso() });
+        await updateJob(jobId, { status: 'success', finished_at: nowIso() });
     });
 }
 
 export function runFlexScanJob(jobId, flightId, window = 5) {
     enqueue(async () => {
-        const flight = getFlight(flightId);
+        const flight = await getFlight(flightId);
         if (!flight) {
-            updateJob(jobId, {
+            await updateJob(jobId, {
                 status: 'error',
                 error_text: 'Flight not found',
                 finished_at: nowIso()
@@ -122,7 +128,7 @@ export function runFlexScanJob(jobId, flightId, window = 5) {
         }
 
         const total = window * 2 + 1;
-        updateJob(jobId, { status: 'running', started_at: nowIso(), progress_total: total, progress_current: 0 });
+        await updateJob(jobId, { status: 'running', started_at: nowIso(), progress_total: total, progress_current: 0 });
 
         const departDate = new Date(flight.departure_date);
         const returnDate = flight.return_date ? new Date(flight.return_date) : null;
@@ -147,7 +153,7 @@ export function runFlexScanJob(jobId, flightId, window = 5) {
 
             try {
                 const quote = await getPriceQuote(shiftedFlight);
-                upsertFlexPrice({
+                await upsertFlexPrice({
                     flight_id: flight.id,
                     departure_date: shiftedFlight.departure_date,
                     return_date: shiftedFlight.return_date,
@@ -167,7 +173,7 @@ export function runFlexScanJob(jobId, flightId, window = 5) {
                     source: quote.source || 'unknown'
                 });
             } catch (error) {
-                upsertFlexPrice({
+                await upsertFlexPrice({
                     flight_id: flight.id,
                     departure_date: shiftedFlight.departure_date,
                     return_date: shiftedFlight.return_date,
@@ -188,10 +194,10 @@ export function runFlexScanJob(jobId, flightId, window = 5) {
             }
 
             progress += 1;
-            updateJob(jobId, { progress_current: progress });
+            await updateJob(jobId, { progress_current: progress });
         }
 
-        updateJob(jobId, {
+        await updateJob(jobId, {
             status: 'success',
             result_json: JSON.stringify({ window, results }),
             finished_at: nowIso()
@@ -201,9 +207,9 @@ export function runFlexScanJob(jobId, flightId, window = 5) {
 
 export function runContextRefreshJob(jobId, flightId) {
     enqueue(async () => {
-        const flight = getFlight(flightId);
+        const flight = await getFlight(flightId);
         if (!flight) {
-            updateJob(jobId, {
+            await updateJob(jobId, {
                 status: 'error',
                 error_text: 'Flight not found',
                 finished_at: nowIso()
@@ -211,24 +217,24 @@ export function runContextRefreshJob(jobId, flightId) {
             return;
         }
 
-        updateJob(jobId, { status: 'running', started_at: nowIso(), progress_total: 1, progress_current: 0 });
+        await updateJob(jobId, { status: 'running', started_at: nowIso(), progress_total: 1, progress_current: 0 });
 
         try {
             const context = await fetchTravelContext(flight);
-            upsertContext({
+            await upsertContext({
                 flight_id: flight.id,
                 context_json: JSON.stringify(context),
                 expires_at: context.expires_at || null
             });
 
-            updateJob(jobId, {
+            await updateJob(jobId, {
                 status: 'success',
                 progress_current: 1,
                 result_json: JSON.stringify(context),
                 finished_at: nowIso()
             });
         } catch (error) {
-            updateJob(jobId, {
+            await updateJob(jobId, {
                 status: 'error',
                 error_text: error?.message || String(error),
                 finished_at: nowIso()
@@ -237,9 +243,9 @@ export function runContextRefreshJob(jobId, flightId) {
     });
 }
 
-export function createAndRunJob({ type, flightId = null, progressTotal = 0, window = 5, payload = null }) {
+export async function createAndRunJob({ type, flightId = null, progressTotal = 0, window = 5, payload = null }) {
     const payloadJson = payload ? JSON.stringify(payload) : null;
-    const jobId = createJob({ type, flight_id: flightId, progress_total: progressTotal, payload_json: payloadJson });
+    const jobId = await createJob({ type, flight_id: flightId, progress_total: progressTotal, payload_json: payloadJson });
 
     const localAgentEnabled = ['1', 'true', 'yes'].includes(String(process.env.LOCAL_AGENT_ENABLED || '').toLowerCase());
     if (localAgentEnabled) {

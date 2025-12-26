@@ -14,7 +14,6 @@
 
 import 'dotenv/config';
 import { spawn } from 'child_process';
-import { getFlight } from '../db/flights.js';
 
 const RAILWAY_URL = process.env.RAILWAY_URL || process.env.LOCAL_AGENT_URL;
 const AGENT_TOKEN = process.env.AGENT_TOKEN || '';

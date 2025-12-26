@@ -1,11 +1,16 @@
 import cron from 'node-cron';
-import { getDb } from '../db/setup.js';
-import { getActiveFlights, savePrice, updateFlightCheckStatus } from '../db/flights.js';
-import { createJob } from '../db/jobs.js';
+import {
+    getActiveFlights,
+    savePrice,
+    updateFlightCheckStatus,
+    createJob,
+    getBestFlexPrice,
+    getContext,
+    upsertContext,
+    query
+} from '../db/postgres.js';
 import { sendPriceDropAlert } from '../notifications/email.js';
 import { analyzeFlightPrice } from '../agent/analyze.js';
-import { getBestFlexPrice } from '../db/flex.js';
-import { getContext, upsertContext } from '../db/contexts.js';
 import { fetchTravelContext } from '../context/context.js';
 import { getScheduleInfo } from './schedule.js';
 import { getPriceQuote } from '../pricing/engine.js';
@@ -13,17 +18,16 @@ import { getPriceQuote } from '../pricing/engine.js';
 // Check prices and send updates
 async function checkAndSendPriceUpdates() {
     console.log('\n[Scheduler] Running scheduled price check...');
-    let db = null;
     try {
         const localAgentEnabled = ['1', 'true', 'yes'].includes(String(process.env.LOCAL_AGENT_ENABLED || '').toLowerCase());
         if (localAgentEnabled) {
-            const flights = getActiveFlights();
+            const flights = await getActiveFlights();
             const payload = { origin: 'scheduler', requested_at: new Date().toISOString() };
-            createJob({ type: 'check_all', progress_total: flights.length, payload_json: JSON.stringify(payload) });
+            await createJob({ type: 'check_all', progress_total: flights.length, payload_json: JSON.stringify(payload) });
 
             for (const flight of flights) {
                 if (!flight.notify_email) continue;
-                createJob({
+                await createJob({
                     type: 'send_email',
                     flight_id: flight.id,
                     progress_total: 1,
@@ -37,12 +41,12 @@ async function checkAndSendPriceUpdates() {
 
         // First, update latest prices (Amadeus primary, Google fallback)
         console.log('[Scheduler] Refreshing prices...');
-        const flightsToCheck = getActiveFlights();
+        const flightsToCheck = await getActiveFlights();
 
         for (const flight of flightsToCheck) {
             try {
                 const quote = await getPriceQuote(flight);
-                savePrice({
+                await savePrice({
                     flight_id: flight.id,
                     price: quote.price,
                     currency: quote.currency || 'USD',
@@ -50,16 +54,15 @@ async function checkAndSendPriceUpdates() {
                     raw_data: quote.raw_data || null,
                     source: quote.source || null
                 });
-                updateFlightCheckStatus(flight.id, 'ok', null);
+                await updateFlightCheckStatus(flight.id, 'ok', null);
             } catch (error) {
                 const message = error?.message || String(error);
-                updateFlightCheckStatus(flight.id, 'error', message);
+                await updateFlightCheckStatus(flight.id, 'error', message);
             }
         }
 
         // Get all active flights with prices
-        db = getDb();
-        const flights = db.prepare(`
+        const result = await query(`
             SELECT
                 f.id, f.name, f.origin, f.destination, f.notify_email, f.departure_date,
                 f.return_date, f.cabin_class, f.passengers, f.preferred_airline,
@@ -69,7 +72,8 @@ async function checkAndSendPriceUpdates() {
                 (SELECT airline FROM prices WHERE flight_id = f.id ORDER BY checked_at DESC LIMIT 1) as airline
             FROM flights f
             WHERE f.is_active = 1 AND f.notify_email IS NOT NULL
-        `).all();
+        `);
+        const flights = result.rows;
 
         for (const flight of flights) {
             if (!flight.current_price) continue;
@@ -85,7 +89,7 @@ async function checkAndSendPriceUpdates() {
             }
 
             // Flex suggestion (cached best price)
-            const bestFlex = getBestFlexPrice({
+            const bestFlex = await getBestFlexPrice({
                 flight_id: flight.id,
                 maxAgeHours: 12,
                 cabin_class: flight.cabin_class,
@@ -106,7 +110,7 @@ async function checkAndSendPriceUpdates() {
 
             // Context cache
             let context = null;
-            const cachedContext = getContext({ flight_id: flight.id, maxAgeHours: 6 });
+            const cachedContext = await getContext({ flight_id: flight.id, maxAgeHours: 6 });
             if (cachedContext?.context_json) {
                 try {
                     context = JSON.parse(cachedContext.context_json);
@@ -118,7 +122,7 @@ async function checkAndSendPriceUpdates() {
             if (!context) {
                 try {
                     context = await fetchTravelContext(flight);
-                    upsertContext({
+                    await upsertContext({
                         flight_id: flight.id,
                         context_json: JSON.stringify(context),
                         expires_at: context.expires_at || null
@@ -150,10 +154,6 @@ async function checkAndSendPriceUpdates() {
         console.log('[Scheduler] All updates sent!');
     } catch (error) {
         console.error('[Scheduler] Error:', error.message);
-    } finally {
-        if (db) {
-            db.close();
-        }
     }
 }
 

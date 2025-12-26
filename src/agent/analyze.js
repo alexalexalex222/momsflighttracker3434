@@ -10,8 +10,7 @@
  */
 
 import 'dotenv/config';
-import { getAllFlightsWithLatestPrice, getPriceHistory } from '../db/flights.js';
-import { getDb } from '../db/setup.js';
+import { getAllFlightsWithLatestPrice, getPriceHistory, getFlight, query } from '../db/postgres.js';
 
 // Airport code to city mapping
 const AIRPORT_CITIES = {
@@ -26,13 +25,13 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
                 'July', 'August', 'September', 'October', 'November', 'December'];
 
 // Web search using DuckDuckGo (free, no API key)
-async function webSearch(query) {
+async function webSearch(queryText) {
     try {
-        const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
+        const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(queryText)}&format=json&no_html=1`;
         const response = await fetch(url);
         const data = await response.json();
         return {
-            query,
+            query: queryText,
             abstract: data.Abstract || null,
             source: data.AbstractSource || null,
             url: data.AbstractURL || null,
@@ -42,7 +41,7 @@ async function webSearch(query) {
             })).filter(t => t.text)
         };
     } catch (error) {
-        return { query, error: error.message };
+        return { query: queryText, error: error.message };
     }
 }
 
@@ -84,20 +83,14 @@ function getSearchQueries(flight) {
 
 // Main analysis function
 export async function analyzeFlightPrice(flightId) {
-    const db = getDb();
-
     // Get flight
-    const flight = db.prepare('SELECT * FROM flights WHERE id = ?').get(flightId);
+    const flight = await getFlight(flightId);
     if (!flight) {
-        db.close();
         throw new Error(`Flight ${flightId} not found`);
     }
 
     // Get prices
-    const prices = db.prepare(`
-        SELECT price, airline, checked_at FROM prices
-        WHERE flight_id = ? ORDER BY checked_at DESC LIMIT 30
-    `).all(flightId);
+    const prices = await getPriceHistory(flightId, 30);
 
     const priceData = analyzePriceTrend(prices);
     const dest = AIRPORT_CITIES[flight.destination] || flight.destination;
@@ -116,13 +109,13 @@ export async function analyzeFlightPrice(flightId) {
     const insights = [];
     const sources = [];
 
-    for (const query of queries) {
-        const result = await webSearch(query);
+    for (const q of queries) {
+        const result = await webSearch(q);
         await new Promise(r => setTimeout(r, 300)); // Rate limit
 
         if (result.abstract) {
             insights.push({
-                category: query.split(' ').slice(0, 2).join(' '),
+                category: q.split(' ').slice(0, 2).join(' '),
                 text: result.abstract.substring(0, 200),
                 source: result.source,
                 url: result.url
@@ -185,27 +178,25 @@ export async function analyzeFlightPrice(flightId) {
 
     // Save to database (create table if needed)
     try {
-        db.exec(`CREATE TABLE IF NOT EXISTS analyses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            flight_id INTEGER NOT NULL,
+        await query(`CREATE TABLE IF NOT EXISTS analyses (
+            id SERIAL PRIMARY KEY,
+            flight_id INTEGER NOT NULL REFERENCES flights(id) ON DELETE CASCADE,
             analysis_json TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (flight_id) REFERENCES flights(id)
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )`);
-        db.prepare('INSERT INTO analyses (flight_id, analysis_json) VALUES (?, ?)')
-          .run(flightId, JSON.stringify(analysis));
+        await query('INSERT INTO analyses (flight_id, analysis_json) VALUES ($1, $2)',
+            [flightId, JSON.stringify(analysis)]);
         console.log('Analysis saved.');
     } catch (e) {
         console.log('Note: Could not save analysis:', e.message);
     }
 
-    db.close();
     return analysis;
 }
 
 // Analyze all active flights
 async function analyzeAllFlights() {
-    const flights = getAllFlightsWithLatestPrice();
+    const flights = await getAllFlightsWithLatestPrice();
 
     if (flights.length === 0) {
         console.log('No flights to analyze.');

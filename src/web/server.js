@@ -3,6 +3,7 @@ import express from 'express';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import {
+    initializeDatabase,
     addFlight,
     getFlight,
     getFlightWithPrices,
@@ -11,13 +12,18 @@ import {
     getPriceHistory,
     updateFlight,
     savePrice,
-    updateFlightCheckStatus
-} from '../db/flights.js';
-import { getDb, getDbPath } from '../db/setup.js';
+    updateFlightCheckStatus,
+    getJob,
+    claimNextJob,
+    updateJob,
+    createJob,
+    getFlexPrices,
+    getBestFlexPrice,
+    upsertFlexPrice,
+    getContext,
+    upsertContext
+} from '../db/postgres.js';
 import { startScheduler } from '../scheduler/alerts.js';
-import { getJob, claimNextJob, updateJob, createJob } from '../db/jobs.js';
-import { getFlexPrices, getBestFlexPrice, upsertFlexPrice } from '../db/flex.js';
-import { getContext, upsertContext } from '../db/contexts.js';
 import { createAndRunJob } from '../jobs/runner.js';
 import { getScheduleInfo } from '../scheduler/schedule.js';
 import { fetchTravelContext } from '../context/context.js';
@@ -71,23 +77,25 @@ function parsePassengers(value) {
     return Number.isFinite(num) ? num : null;
 }
 
-// Ensure the SQLite file + schema exists at boot (helpful for Railway logs).
-try {
-    const db = getDb();
-    db.close();
-} catch (error) {
-    console.error('[DB] Initialization failed:', error);
-}
+// Initialize PostgreSQL database on startup
+(async () => {
+    try {
+        await initializeDatabase();
+        console.log('[DB] PostgreSQL ready');
+    } catch (error) {
+        console.error('[DB] PostgreSQL initialization failed:', error);
+        process.exit(1);
+    }
+})();
 
 // API Routes
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
     let dbOk = true;
     let dbError = null;
 
     try {
-        const db = getDb();
-        db.prepare('SELECT 1').get();
-        db.close();
+        const { query } = await import('../db/postgres.js');
+        await query('SELECT 1');
     } catch (e) {
         dbOk = false;
         dbError = e?.message || String(e);
@@ -99,7 +107,7 @@ app.get('/api/health', (req, res) => {
         node: process.version,
         db: {
             ok: dbOk,
-            path: getDbPath(),
+            type: 'postgresql',
             error: dbError
         },
         email: {
@@ -121,9 +129,9 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-app.get('/api/flights', (req, res) => {
+app.get('/api/flights', async (req, res) => {
     try {
-        const flights = getAllFlightsWithLatestPrice();
+        const flights = await getAllFlightsWithLatestPrice();
         res.json(flights);
     } catch (error) {
         console.error('[API] GET /api/flights failed:', error);
@@ -131,7 +139,7 @@ app.get('/api/flights', (req, res) => {
     }
 });
 
-app.post('/api/flights', (req, res) => {
+app.post('/api/flights', async (req, res) => {
     try {
         const body = req.body || {};
         const errors = [];
@@ -154,7 +162,7 @@ app.post('/api/flights', (req, res) => {
             return res.status(400).json({ error: errors.join('. ') });
         }
 
-        const id = addFlight({ ...body, passengers: passengers ?? body.passengers });
+        const id = await addFlight({ ...body, passengers: passengers ?? body.passengers });
         res.json({ id, success: true });
     } catch (error) {
         console.error('[API] POST /api/flights failed:', error);
@@ -162,7 +170,7 @@ app.post('/api/flights', (req, res) => {
     }
 });
 
-app.put('/api/flights/:id', (req, res) => {
+app.put('/api/flights/:id', async (req, res) => {
     try {
         const body = req.body || {};
         const errors = [];
@@ -187,7 +195,7 @@ app.put('/api/flights/:id', (req, res) => {
             return res.status(400).json({ error: errors.join('. ') });
         }
 
-        const updated = updateFlight(parseInt(req.params.id), { ...body, passengers: passengers ?? body.passengers });
+        const updated = await updateFlight(parseInt(req.params.id), { ...body, passengers: passengers ?? body.passengers });
         if (!updated) {
             return res.status(404).json({ error: 'Flight not found' });
         }
@@ -198,9 +206,9 @@ app.put('/api/flights/:id', (req, res) => {
     }
 });
 
-app.get('/api/flights/:id', (req, res) => {
+app.get('/api/flights/:id', async (req, res) => {
     try {
-        const flight = getFlightWithPrices(parseInt(req.params.id));
+        const flight = await getFlightWithPrices(parseInt(req.params.id));
         if (!flight) return res.status(404).json({ error: 'Flight not found' });
         res.json(flight);
     } catch (error) {
@@ -209,10 +217,10 @@ app.get('/api/flights/:id', (req, res) => {
     }
 });
 
-app.get('/api/flights/:id/prices', (req, res) => {
+app.get('/api/flights/:id/prices', async (req, res) => {
     try {
         const days = parseInt(req.query.days) || 30;
-        const prices = getPriceHistory(parseInt(req.params.id), days);
+        const prices = await getPriceHistory(parseInt(req.params.id), days);
         res.json(prices);
     } catch (error) {
         console.error('[API] GET /api/flights/:id/prices failed:', error);
@@ -220,10 +228,10 @@ app.get('/api/flights/:id/prices', (req, res) => {
     }
 });
 
-app.post('/api/flights/:id/check', (req, res) => {
+app.post('/api/flights/:id/check', async (req, res) => {
     try {
         const flightId = parseInt(req.params.id);
-        const jobId = createAndRunJob({
+        const jobId = await createAndRunJob({
             type: 'check_now',
             flightId,
             progressTotal: 1,
@@ -236,9 +244,9 @@ app.post('/api/flights/:id/check', (req, res) => {
     }
 });
 
-app.post('/api/flights/check', (req, res) => {
+app.post('/api/flights/check', async (req, res) => {
     try {
-        const jobId = createAndRunJob({
+        const jobId = await createAndRunJob({
             type: 'check_all',
             payload: { origin: 'railway', requested_at: new Date().toISOString() }
         });
@@ -250,10 +258,10 @@ app.post('/api/flights/check', (req, res) => {
 });
 
 // Full travel intelligence analysis (price + 5 web searches + prediction)
-app.post('/api/flights/:id/analyze', (req, res) => {
+app.post('/api/flights/:id/analyze', async (req, res) => {
     try {
         const flightId = parseInt(req.params.id);
-        const jobId = createAndRunJob({
+        const jobId = await createAndRunJob({
             type: 'full_analysis',
             flightId,
             progressTotal: 1,
@@ -266,9 +274,9 @@ app.post('/api/flights/:id/analyze', (req, res) => {
     }
 });
 
-app.get('/api/jobs/:id', (req, res) => {
+app.get('/api/jobs/:id', async (req, res) => {
     try {
-        const job = getJob(parseInt(req.params.id));
+        const job = await getJob(parseInt(req.params.id));
         if (!job) return res.status(404).json({ error: 'Job not found' });
         res.json(job);
     } catch (error) {
@@ -278,9 +286,9 @@ app.get('/api/jobs/:id', (req, res) => {
 });
 
 // Local agent polling (Mac Claude/MCP runner)
-app.get('/api/agent/jobs', requireAgentAuth, (req, res) => {
+app.get('/api/agent/jobs', requireAgentAuth, async (req, res) => {
     try {
-        const job = claimNextJob();
+        const job = await claimNextJob();
         if (!job) return res.status(204).end();
         let payload = null;
         try {
@@ -295,21 +303,21 @@ app.get('/api/agent/jobs', requireAgentAuth, (req, res) => {
     }
 });
 
-app.post('/api/agent/jobs/:id/complete', requireAgentAuth, (req, res) => {
+app.post('/api/agent/jobs/:id/complete', requireAgentAuth, async (req, res) => {
     try {
         const jobId = parseInt(req.params.id);
-        const job = getJob(jobId);
+        const job = await getJob(jobId);
         if (!job) return res.status(404).json({ error: 'Job not found' });
 
         const { status, result, error_text, progress_current } = req.body || {};
         const finalStatus = status === 'success' ? 'success' : 'error';
 
         if (typeof progress_current === 'number') {
-            updateJob(jobId, { progress_current });
+            await updateJob(jobId, { progress_current });
         }
 
         if (finalStatus === 'error') {
-            updateJob(jobId, {
+            await updateJob(jobId, {
                 status: 'error',
                 error_text: error_text || 'Agent reported error',
                 finished_at: new Date().toISOString()
@@ -319,7 +327,7 @@ app.post('/api/agent/jobs/:id/complete', requireAgentAuth, (req, res) => {
 
         // Apply side effects based on job type
         if (job.type === 'check_now' && result) {
-            savePrice({
+            await savePrice({
                 flight_id: job.flight_id,
                 price: result.price,
                 currency: result.currency || 'USD',
@@ -327,13 +335,13 @@ app.post('/api/agent/jobs/:id/complete', requireAgentAuth, (req, res) => {
                 raw_data: result.raw_data || null,
                 source: result.source || null
             });
-            updateFlightCheckStatus(job.flight_id, 'ok', null);
+            await updateFlightCheckStatus(job.flight_id, 'ok', null);
         }
 
         if (job.type === 'check_all' && result?.results) {
             for (const row of result.results) {
                 if (!row?.flight_id || !row.price) continue;
-                savePrice({
+                await savePrice({
                     flight_id: row.flight_id,
                     price: row.price,
                     currency: row.currency || 'USD',
@@ -341,13 +349,13 @@ app.post('/api/agent/jobs/:id/complete', requireAgentAuth, (req, res) => {
                     raw_data: row.raw_data || null,
                     source: row.source || null
                 });
-                updateFlightCheckStatus(row.flight_id, 'ok', null);
+                await updateFlightCheckStatus(row.flight_id, 'ok', null);
             }
         }
 
         if (job.type === 'flex_scan' && result?.results) {
             for (const row of result.results) {
-                upsertFlexPrice({
+                await upsertFlexPrice({
                     flight_id: job.flight_id,
                     departure_date: row.departure_date,
                     return_date: row.return_date || '',
@@ -362,14 +370,14 @@ app.post('/api/agent/jobs/:id/complete', requireAgentAuth, (req, res) => {
         }
 
         if (job.type === 'context_refresh' && result?.context) {
-            upsertContext({
+            await upsertContext({
                 flight_id: job.flight_id,
                 context_json: JSON.stringify(result.context),
                 expires_at: result.context.expires_at || null
             });
         }
 
-        updateJob(jobId, {
+        await updateJob(jobId, {
             status: 'success',
             result_json: JSON.stringify(result || {}),
             finished_at: new Date().toISOString()
@@ -382,12 +390,12 @@ app.post('/api/agent/jobs/:id/complete', requireAgentAuth, (req, res) => {
     }
 });
 
-app.post('/api/flights/:id/flex-scan', (req, res) => {
+app.post('/api/flights/:id/flex-scan', async (req, res) => {
     try {
         const flightId = parseInt(req.params.id);
         const window = parseInt(req.query.window) || 5;
         const progressTotal = window * 2 + 1;
-        const jobId = createAndRunJob({
+        const jobId = await createAndRunJob({
             type: 'flex_scan',
             flightId,
             progressTotal,
@@ -401,15 +409,15 @@ app.post('/api/flights/:id/flex-scan', (req, res) => {
     }
 });
 
-app.get('/api/flights/:id/flex', (req, res) => {
+app.get('/api/flights/:id/flex', async (req, res) => {
     try {
         const flightId = parseInt(req.params.id);
         const window = parseInt(req.query.window) || 5;
         const maxAgeHours = parseInt(req.query.maxAgeHours) || 6;
-        const flight = getFlight(flightId);
+        const flight = await getFlight(flightId);
         if (!flight) return res.status(404).json({ error: 'Flight not found' });
 
-        const { rows, isComplete } = getFlexPrices({
+        const { rows, isComplete } = await getFlexPrices({
             flight_id: flightId,
             window,
             maxAgeHours,
@@ -426,10 +434,10 @@ app.get('/api/flights/:id/flex', (req, res) => {
     }
 });
 
-app.post('/api/flights/:id/context-refresh', (req, res) => {
+app.post('/api/flights/:id/context-refresh', async (req, res) => {
     try {
         const flightId = parseInt(req.params.id);
-        const jobId = createAndRunJob({
+        const jobId = await createAndRunJob({
             type: 'context_refresh',
             flightId,
             progressTotal: 1,
@@ -442,11 +450,11 @@ app.post('/api/flights/:id/context-refresh', (req, res) => {
     }
 });
 
-app.get('/api/flights/:id/context', (req, res) => {
+app.get('/api/flights/:id/context', async (req, res) => {
     try {
         const flightId = parseInt(req.params.id);
         const maxAgeHours = parseInt(req.query.maxAgeHours) || 6;
-        const cached = getContext({ flight_id: flightId, maxAgeHours });
+        const cached = await getContext({ flight_id: flightId, maxAgeHours });
         if (!cached) {
             return res.json({ needsRefresh: true });
         }
@@ -478,9 +486,9 @@ app.get('/api/schedule', (req, res) => {
     }
 });
 
-app.delete('/api/flights/:id', (req, res) => {
+app.delete('/api/flights/:id', async (req, res) => {
     try {
-        deactivateFlight(parseInt(req.params.id));
+        await deactivateFlight(parseInt(req.params.id));
         res.json({ success: true });
     } catch (error) {
         console.error('[API] DELETE /api/flights/:id failed:', error);
@@ -505,7 +513,7 @@ app.post('/api/flights/:id/notify', async (req, res) => {
     try {
         const { sendPriceDropAlert } = await import('../notifications/email.js');
         const { analyzeFlightPrice } = await import('../agent/analyze.js');
-        const flight = getFlightWithPrices(parseInt(req.params.id));
+        const flight = await getFlightWithPrices(parseInt(req.params.id));
 
         if (!flight) {
             return res.status(404).json({ error: 'Flight not found' });
@@ -517,7 +525,7 @@ app.post('/api/flights/:id/notify', async (req, res) => {
 
         const localAgentEnabled = ['1', 'true', 'yes'].includes(String(process.env.LOCAL_AGENT_ENABLED || '').toLowerCase());
         if (localAgentEnabled) {
-            const jobId = createJob({
+            const jobId = await createJob({
                 type: 'send_email',
                 flight_id: flight.id,
                 progress_total: 1,
@@ -540,7 +548,7 @@ app.post('/api/flights/:id/notify', async (req, res) => {
         }
 
         // Flex suggestion (cached)
-        const bestFlex = getBestFlexPrice({
+        const bestFlex = await getBestFlexPrice({
             flight_id: flight.id,
             maxAgeHours: 12,
             cabin_class: flight.cabin_class,
@@ -555,7 +563,7 @@ app.post('/api/flights/:id/notify', async (req, res) => {
 
         // Context (cached or refresh)
         let context = null;
-        const cachedContext = getContext({ flight_id: flight.id, maxAgeHours: 6 });
+        const cachedContext = await getContext({ flight_id: flight.id, maxAgeHours: 6 });
         if (cachedContext?.context_json) {
             try {
                 context = JSON.parse(cachedContext.context_json);
@@ -567,7 +575,7 @@ app.post('/api/flights/:id/notify', async (req, res) => {
         if (!context) {
             try {
                 context = await fetchTravelContext(flight);
-                upsertContext({
+                await upsertContext({
                     flight_id: flight.id,
                     context_json: JSON.stringify(context),
                     expires_at: context.expires_at || null
