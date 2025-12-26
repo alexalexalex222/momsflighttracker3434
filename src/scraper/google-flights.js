@@ -102,42 +102,56 @@ async function launchBrowser() {
     throw new Error(`${hint}\nTried: ${details}`);
 }
 
-function mapCabinToQuery(cabinClass) {
+// Map cabin class to Google Flights cabin code
+// 1 = Economy, 2 = Premium Economy, 3 = Business, 4 = First
+function getCabinCode(cabinClass) {
     switch ((cabinClass || '').toLowerCase()) {
         case 'premium_economy':
-            return 'premium economy';
+            return 2;
         case 'business':
-            return 'business class';
+            return 3;
         case 'first':
-            return 'first class';
+            return 4;
         case 'economy':
         default:
-            return 'economy';
+            return 1;
     }
 }
 
-function buildSearchQuery(flight) {
-    const { origin, destination, departure_date, return_date, preferred_airline, passengers, cabin_class } = flight;
+function getCabinName(cabinClass) {
+    switch ((cabinClass || '').toLowerCase()) {
+        case 'premium_economy':
+            return 'Premium Economy';
+        case 'business':
+            return 'Business';
+        case 'first':
+            return 'First';
+        case 'economy':
+        default:
+            return 'Economy';
+    }
+}
 
-    const depDate = departure_date.replace(/-/g, '-');
-    const retDate = return_date ? return_date.replace(/-/g, '-') : null;
+function buildGoogleFlightsUrl(flight) {
+    const { origin, destination, departure_date, return_date, passengers, cabin_class } = flight;
 
+    // Format: /travel/flights?q=ATL+to+MAD&curr=USD
+    // With date format for the search
+    const depDate = departure_date; // YYYY-MM-DD
+    const cabinCode = getCabinCode(cabin_class);
     const pax = Number.isFinite(passengers) ? Math.max(1, passengers) : 1;
-    const paxText = `${pax} adult${pax === 1 ? '' : 's'}`;
-    const cabinText = mapCabinToQuery(cabin_class);
 
-    let query = `Flights from ${origin} to ${destination} on ${depDate}`;
-    if (retDate) {
-        query += ` returning ${retDate}`;
+    // Build a simple query that Google understands
+    let query = `${origin} to ${destination} ${depDate}`;
+    if (return_date) {
+        query += ` to ${return_date}`;
     }
 
-    query += ` ${paxText} ${cabinText}`;
+    // Add cabin class and passengers to query
+    const cabinName = getCabinName(cabin_class);
+    query += ` ${pax} passenger ${cabinName}`;
 
-    if (preferred_airline && preferred_airline !== 'any') {
-        query += ` ${preferred_airline}`;
-    }
-
-    return query;
+    return `https://www.google.com/travel/flights?q=${encodeURIComponent(query)}&curr=USD`;
 }
 
 // Scrape a single flight from Google Flights
@@ -148,17 +162,19 @@ async function scrapeFlight(browser, flight) {
         await page.setViewport({ width: 1400, height: 900 });
         await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        const { origin, destination } = flight;
+        const { origin, destination, cabin_class } = flight;
         const prefersDelta = String(flight.preferred_airline || '').toLowerCase() === 'delta';
-        const query = buildSearchQuery(flight);
+        const cabinName = getCabinName(cabin_class);
+        const url = buildGoogleFlightsUrl(flight);
 
-        const url = `https://www.google.com/travel/flights?q=${encodeURIComponent(query)}&curr=USD`;
-
-        console.log(`[Scraper] ${flight.name}: ${origin} → ${destination}`);
+        console.log(`[Scraper] ${flight.name}: ${origin} → ${destination} (${cabinName})`);
+        console.log(`[Scraper] URL: ${url}`);
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-        // Wait for page to render
-        await new Promise(r => setTimeout(r, 4000));
+        // Wait for page to render (longer for premium cabins)
+        const isPremiumCabin = ['business', 'first', 'premium_economy'].includes((cabin_class || '').toLowerCase());
+        const waitTime = isPremiumCabin ? 6000 : 4000;
+        await new Promise(r => setTimeout(r, waitTime));
 
         // Take a screenshot for debugging (can be disabled in production)
         await page.screenshot({ path: `/tmp/flight-${flight.id}.png`, fullPage: false });
@@ -193,7 +209,7 @@ async function scrapeFlight(browser, flight) {
                         const priceMatch = lines[j].match(/\$(\d{1,3}(?:,\d{3})*)/);
                         if (priceMatch) {
                             const p = parseInt(priceMatch[1].replace(',', ''));
-                            if (p >= 100 && p <= 20000) {
+                            if (p >= 100 && p <= 50000) {
                                 if (!deltaPrice || p < deltaPrice) {
                                     deltaPrice = p;
                                 }
@@ -209,7 +225,7 @@ async function scrapeFlight(browser, flight) {
             let match;
             while ((match = priceRegex.exec(pageText)) !== null) {
                 const p = parseInt(match[1].replace(',', ''));
-                if (p >= 50 && p <= 20000) {
+                if (p >= 50 && p <= 50000) {
                     allPrices.push(p);
                 }
             }
