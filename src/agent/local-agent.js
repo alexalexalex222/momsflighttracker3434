@@ -155,9 +155,20 @@ If you cannot find a price, return:
     }
 
     if (jobType === 'full_analysis') {
+        // Calculate price statistics from historical data
+        const prices = historicalPrices.map(p => p.price).filter(p => p > 0);
+        const latestPrice = prices[0] || null;
+        const avgPrice = prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : null;
+        const minPrice = prices.length > 0 ? Math.min(...prices) : null;
+        const maxPrice = prices.length > 0 ? Math.max(...prices) : null;
+
         const historyStr = historicalPrices.length > 0
-            ? historicalPrices.map(p => `  - ${p.checked_at}: $${p.price} (${p.airline || 'Unknown'})`).join('\n')
+            ? historicalPrices.slice(0, 10).map(p => `  - ${p.checked_at}: $${p.price} (${p.airline || 'Unknown'})`).join('\n')
             : '  No historical data yet';
+
+        const statsStr = prices.length > 0
+            ? `Latest: $${latestPrice} | Avg: $${avgPrice} | Low: $${minPrice} | High: $${maxPrice} | Data points: ${prices.length}`
+            : 'No price data available';
 
         return `
 You are a travel intelligence analyst helping someone decide whether to book a flight NOW or WAIT.
@@ -174,44 +185,39 @@ ${flight.return_date ? `- Return: ${flight.return_date}` : '- One way'}
 ${flight.preferred_airline ? `- Preferred Airline: ${flight.preferred_airline}` : ''}
 
 ═══════════════════════════════════════════════════════════════════════════════
-HISTORICAL PRICES (from our database)
+PRICE HISTORY (from our tracking database)
 ═══════════════════════════════════════════════════════════════════════════════
+${statsStr}
+
+Recent prices:
 ${historyStr}
 
 ═══════════════════════════════════════════════════════════════════════════════
-YOUR TASKS (do ALL of these)
+YOUR TASKS - Use WebSearch tool for ALL of these
 ═══════════════════════════════════════════════════════════════════════════════
 
-TASK 1: GET CURRENT PRICE (Browser Automation)
-- Go to Google Flights (google.com/travel/flights)
-- Enter: ${flight.origin} to ${flight.destination}
-- Set dates: ${flight.departure_date}${flight.return_date ? ` to ${flight.return_date}` : ''}
-- IMPORTANT: Click the cabin class dropdown and SELECT "${cabinName}"
-- Get the cheapest price for this cabin class
-- Note the airline
+TASK 1: WEB RESEARCH (do all 5 searches)
+Use the WebSearch tool to find context that affects flight prices and travel:
 
-TASK 2: WEB RESEARCH (Use WebSearch tool - do all 5 searches)
-Search for context that affects flight prices and travel:
-
-1. NEWS & SAFETY: "${destCity} travel news ${travelMonth}" OR "${destCity} safety travel advisory"
+1. Search: "${destCity} travel news December 2025 January 2026"
    → Any recent news affecting travel to this destination?
 
-2. HOLIDAYS & EVENTS: "${destCity} holidays festivals ${travelMonth}" AND "US holidays ${travelMonth}"
+2. Search: "${destCity} holidays festivals ${travelMonth}"
    → Major holidays, festivals, events during travel dates?
 
-3. STRIKES & DISRUPTIONS: "${destCity} airport strikes" OR "${flight.destination} airline strikes 2026"
+3. Search: "${destCity} airport strikes transportation 2026"
    → Any transportation strikes or disruptions?
 
-4. CURRENCY & COSTS: "USD to EUR exchange rate" (or relevant currency) AND "${destCity} tourism costs"
-   → Currency trends? Is destination expensive right now?
+4. Search: "${destCity} tourism costs 2026 travel budget"
+   → Is destination expensive right now? Currency situation?
 
-5. CULTURAL INFO: "${destCity} travel tips" OR "${destCity} what to know before visiting"
+5. Search: "${destCity} travel tips what to know"
    → Store closures, customs, local tips?
 
-TASK 3: ANALYZE & PREDICT
-Based on ALL data (current price, historical prices, web research):
-- Is current price GOOD, FAIR, or HIGH compared to history?
-- Will prices likely GO UP, GO DOWN, or STAY STABLE?
+TASK 2: ANALYZE & PREDICT
+Based on ALL data (historical prices + web research):
+- Is the latest tracked price ($${latestPrice || 'unknown'}) GOOD, FAIR, or HIGH vs average ($${avgPrice || 'unknown'})?
+- Based on demand factors (holidays, events, season), will prices GO UP, GO DOWN, or STAY STABLE?
 - Should user BOOK NOW or WAIT?
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -220,17 +226,19 @@ OUTPUT FORMAT (respond with ONLY this JSON, no other text)
 {
     "success": true,
     "price": {
-        "current": <number>,
+        "latest_tracked": ${latestPrice || 'null'},
+        "average": ${avgPrice || 'null'},
+        "low": ${minPrice || 'null'},
+        "high": ${maxPrice || 'null'},
         "currency": "USD",
-        "airline": "<airline name>",
-        "vs_average": "<X% above/below average>" or "no history",
+        "vs_average": "${latestPrice && avgPrice ? (latestPrice > avgPrice ? `${Math.round((latestPrice - avgPrice) / avgPrice * 100)}% above average` : `${Math.round((avgPrice - latestPrice) / avgPrice * 100)}% below average`) : 'no data'}",
         "assessment": "good" | "fair" | "high"
     },
     "prediction": {
         "direction": "up" | "down" | "stable",
         "confidence": "high" | "medium" | "low",
         "recommendation": "book_now" | "wait" | "monitor",
-        "reasoning": "<2-3 sentences explaining why>"
+        "reasoning": "<2-3 sentences explaining why based on your research>"
     },
     "context": {
         "news": "<1-2 sentence summary of relevant news>",
@@ -245,30 +253,45 @@ OUTPUT FORMAT (respond with ONLY this JSON, no other text)
     ]
 }
 
-If you cannot complete a task, still return partial results with what you found.
+IMPORTANT: Do the web searches FIRST, then analyze. Return partial results if some searches fail.
 `;
     }
 
     return `Check flight ${flight.origin} to ${flight.destination} on ${flight.departure_date}`;
 }
 
-async function runClaudeWithChrome(prompt) {
+async function runClaudeAnalysis(prompt) {
     return new Promise((resolve, reject) => {
-        console.log('[LocalAgent] Running Claude CLI with Chrome...');
+        console.log('[LocalAgent] Running Claude CLI with WebSearch...');
 
-        const claude = spawn('claude', [
-            '--chrome',
+        // Claude CLI has built-in WebSearch tool - no browser needed for research!
+        // The WebSearch tool uses Anthropic's search API, no CAPTCHA issues.
+        // IMPORTANT: Use full path to Claude binary - the alias doesn't work in subprocess
+        const claudePath = process.env.HOME + '/.claude/local/node_modules/.bin/claude';
+        console.log('[LocalAgent] Claude path:', claudePath);
+        console.log('[LocalAgent] Prompt length:', prompt.length);
+
+        const claude = spawn(claudePath, [
+            '--model', 'sonnet',  // Use sonnet for cost efficiency
             '-p', prompt,
-            '--dangerously-skip-permissions'
+            '--dangerously-skip-permissions',
+            '--output-format', 'json'
         ], {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: { ...process.env }
         });
 
+        console.log('[LocalAgent] Spawned Claude subprocess, PID:', claude.pid);
+
+        // Close stdin immediately - Claude CLI doesn't need interactive input
+        claude.stdin.end();
+
         let stdout = '';
         let stderr = '';
 
         claude.stdout.on('data', (data) => {
+            // Log progress for long-running analysis
+            console.log('[LocalAgent] Received', data.length, 'bytes from Claude');
             stdout += data.toString();
         });
 
@@ -284,19 +307,43 @@ async function runClaudeWithChrome(prompt) {
                 return;
             }
 
-            // Try to extract JSON from output
+            // Parse JSON output from Claude CLI
             try {
-                // Look for JSON in the output
-                const jsonMatch = stdout.match(/\{[\s\S]*"success"[\s\S]*\}/);
+                // With --output-format json, Claude returns an array of message objects
+                // We need to find the "result" type object for the final response
+                const messages = JSON.parse(stdout);
+
+                // Find the result message
+                const resultMsg = Array.isArray(messages)
+                    ? messages.find(m => m.type === 'result')
+                    : messages;
+
+                if (!resultMsg) {
+                    console.log('[LocalAgent] No result message found');
+                    reject(new Error('No result message in Claude output'));
+                    return;
+                }
+
+                // The result text is in resultMsg.result
+                const resultText = resultMsg.result || '';
+
+                // Look for our expected JSON in the result text
+                const jsonMatch = String(resultText).match(/\{[\s\S]*"success"[\s\S]*\}/);
                 if (jsonMatch) {
                     const result = JSON.parse(jsonMatch[0]);
                     resolve(result);
                 } else {
-                    console.log('[LocalAgent] Raw output:', stdout);
-                    reject(new Error('No JSON found in Claude output'));
+                    // If no structured JSON found, return the raw response with context
+                    console.log('[LocalAgent] No structured JSON, returning raw response');
+                    resolve({
+                        success: true,
+                        raw: resultText,
+                        source: 'claude_analysis'
+                    });
                 }
             } catch (parseError) {
-                console.log('[LocalAgent] Raw output:', stdout);
+                console.log('[LocalAgent] Parse error:', parseError.message);
+                console.log('[LocalAgent] Raw output (first 1000 chars):', stdout.substring(0, 1000));
                 reject(new Error(`Failed to parse Claude output: ${parseError.message}`));
             }
         });
@@ -323,7 +370,7 @@ async function processJob(job) {
             console.log(`[LocalAgent] Cabin: ${flight.cabin_class}, Date: ${flight.departure_date}`);
 
             const prompt = buildScrapePrompt(flight, 'check_now');
-            const result = await runClaudeWithChrome(prompt);
+            const result = await runClaudeAnalysis(prompt);
 
             if (result.success) {
                 console.log(`[LocalAgent] ✓ Found price: $${result.price} on ${result.airline}`);
@@ -351,7 +398,7 @@ async function processJob(job) {
 
                 try {
                     const prompt = buildScrapePrompt(flight, 'check_now');
-                    const result = await runClaudeWithChrome(prompt);
+                    const result = await runClaudeAnalysis(prompt);
 
                     if (result.success) {
                         results.push({
@@ -403,11 +450,11 @@ async function processJob(job) {
             // Build the comprehensive prompt
             const prompt = buildScrapePrompt(flight, 'full_analysis', historicalPrices);
 
-            console.log(`[LocalAgent] Running full analysis with Claude + Chrome...`);
-            console.log(`[LocalAgent] This will: 1) Get Google Flights price 2) Do 5 web searches 3) Analyze & predict`);
+            console.log(`[LocalAgent] Running full analysis with Claude + WebSearch...`);
+            console.log(`[LocalAgent] This will: 1) Do 5 web searches 2) Analyze historical prices 3) Predict & recommend`);
 
             try {
-                const result = await runClaudeWithChrome(prompt);
+                const result = await runClaudeAnalysis(prompt);
 
                 if (result.success) {
                     console.log(`[LocalAgent] ✓ Analysis complete!`);
