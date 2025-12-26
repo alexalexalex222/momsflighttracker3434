@@ -9,12 +9,14 @@ import {
     getAllFlightsWithLatestPrice,
     deactivateFlight,
     getPriceHistory,
-    updateFlight
+    updateFlight,
+    savePrice,
+    updateFlightCheckStatus
 } from '../db/flights.js';
 import { getDb, getDbPath } from '../db/setup.js';
 import { startScheduler } from '../scheduler/alerts.js';
-import { getJob } from '../db/jobs.js';
-import { getFlexPrices, getBestFlexPrice } from '../db/flex.js';
+import { getJob, claimNextJob, updateJob, createJob } from '../db/jobs.js';
+import { getFlexPrices, getBestFlexPrice, upsertFlexPrice } from '../db/flex.js';
 import { getContext, upsertContext } from '../db/contexts.js';
 import { createAndRunJob } from '../jobs/runner.js';
 import { getScheduleInfo } from '../scheduler/schedule.js';
@@ -23,10 +25,19 @@ import { fetchTravelContext } from '../context/context.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
+const AGENT_TOKEN = process.env.AGENT_TOKEN || null;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(join(__dirname, 'public')));
+
+function requireAgentAuth(req, res, next) {
+    if (!AGENT_TOKEN) return next();
+    const auth = req.headers.authorization || '';
+    const token = auth.replace('Bearer ', '').trim();
+    if (token && token === AGENT_TOKEN) return next();
+    return res.status(401).json({ error: 'Unauthorized' });
+}
 
 function isNonEmptyString(value) {
     return typeof value === 'string' && value.trim().length > 0;
@@ -212,7 +223,12 @@ app.get('/api/flights/:id/prices', (req, res) => {
 app.post('/api/flights/:id/check', (req, res) => {
     try {
         const flightId = parseInt(req.params.id);
-        const jobId = createAndRunJob({ type: 'check_now', flightId, progressTotal: 1 });
+        const jobId = createAndRunJob({
+            type: 'check_now',
+            flightId,
+            progressTotal: 1,
+            payload: { origin: 'railway', requested_at: new Date().toISOString() }
+        });
         res.json({ jobId });
     } catch (error) {
         console.error('[API] POST /api/flights/:id/check failed:', error);
@@ -222,7 +238,10 @@ app.post('/api/flights/:id/check', (req, res) => {
 
 app.post('/api/flights/check', (req, res) => {
     try {
-        const jobId = createAndRunJob({ type: 'check_all' });
+        const jobId = createAndRunJob({
+            type: 'check_all',
+            payload: { origin: 'railway', requested_at: new Date().toISOString() }
+        });
         res.json({ jobId });
     } catch (error) {
         console.error('[API] POST /api/flights/check failed:', error);
@@ -241,12 +260,123 @@ app.get('/api/jobs/:id', (req, res) => {
     }
 });
 
+// Local agent polling (Mac Claude/MCP runner)
+app.get('/api/agent/jobs', requireAgentAuth, (req, res) => {
+    try {
+        const job = claimNextJob();
+        if (!job) return res.status(204).end();
+        let payload = null;
+        try {
+            payload = job.payload_json ? JSON.parse(job.payload_json) : null;
+        } catch {
+            payload = null;
+        }
+        res.json({ ...job, payload });
+    } catch (error) {
+        console.error('[API] GET /api/agent/jobs failed:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/agent/jobs/:id/complete', requireAgentAuth, (req, res) => {
+    try {
+        const jobId = parseInt(req.params.id);
+        const job = getJob(jobId);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+
+        const { status, result, error_text, progress_current } = req.body || {};
+        const finalStatus = status === 'success' ? 'success' : 'error';
+
+        if (typeof progress_current === 'number') {
+            updateJob(jobId, { progress_current });
+        }
+
+        if (finalStatus === 'error') {
+            updateJob(jobId, {
+                status: 'error',
+                error_text: error_text || 'Agent reported error',
+                finished_at: new Date().toISOString()
+            });
+            return res.json({ ok: true });
+        }
+
+        // Apply side effects based on job type
+        if (job.type === 'check_now' && result) {
+            savePrice({
+                flight_id: job.flight_id,
+                price: result.price,
+                currency: result.currency || 'USD',
+                airline: result.airline || null,
+                raw_data: result.raw_data || null,
+                source: result.source || null
+            });
+            updateFlightCheckStatus(job.flight_id, 'ok', null);
+        }
+
+        if (job.type === 'check_all' && result?.results) {
+            for (const row of result.results) {
+                if (!row?.flight_id || !row.price) continue;
+                savePrice({
+                    flight_id: row.flight_id,
+                    price: row.price,
+                    currency: row.currency || 'USD',
+                    airline: row.airline || null,
+                    raw_data: row.raw_data || null,
+                    source: row.source || null
+                });
+                updateFlightCheckStatus(row.flight_id, 'ok', null);
+            }
+        }
+
+        if (job.type === 'flex_scan' && result?.results) {
+            for (const row of result.results) {
+                upsertFlexPrice({
+                    flight_id: job.flight_id,
+                    departure_date: row.departure_date,
+                    return_date: row.return_date || '',
+                    cabin_class: row.cabin_class || 'economy',
+                    passengers: row.passengers || 1,
+                    price: row.price ?? null,
+                    currency: row.currency || 'USD',
+                    airline: row.airline || null,
+                    source: row.source || 'unknown'
+                });
+            }
+        }
+
+        if (job.type === 'context_refresh' && result?.context) {
+            upsertContext({
+                flight_id: job.flight_id,
+                context_json: JSON.stringify(result.context),
+                expires_at: result.context.expires_at || null
+            });
+        }
+
+        updateJob(jobId, {
+            status: 'success',
+            result_json: JSON.stringify(result || {}),
+            finished_at: new Date().toISOString()
+        });
+
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('[API] POST /api/agent/jobs/:id/complete failed:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/api/flights/:id/flex-scan', (req, res) => {
     try {
         const flightId = parseInt(req.params.id);
         const window = parseInt(req.query.window) || 5;
         const progressTotal = window * 2 + 1;
-        const jobId = createAndRunJob({ type: 'flex_scan', flightId, progressTotal, window });
+        const jobId = createAndRunJob({
+            type: 'flex_scan',
+            flightId,
+            progressTotal,
+            window,
+            payload: { origin: 'railway', window, requested_at: new Date().toISOString() }
+        });
         res.json({ jobId });
     } catch (error) {
         console.error('[API] POST /api/flights/:id/flex-scan failed:', error);
@@ -282,7 +412,12 @@ app.get('/api/flights/:id/flex', (req, res) => {
 app.post('/api/flights/:id/context-refresh', (req, res) => {
     try {
         const flightId = parseInt(req.params.id);
-        const jobId = createAndRunJob({ type: 'context_refresh', flightId, progressTotal: 1 });
+        const jobId = createAndRunJob({
+            type: 'context_refresh',
+            flightId,
+            progressTotal: 1,
+            payload: { origin: 'railway', requested_at: new Date().toISOString() }
+        });
         res.json({ jobId });
     } catch (error) {
         console.error('[API] POST /api/flights/:id/context-refresh failed:', error);
@@ -361,6 +496,17 @@ app.post('/api/flights/:id/notify', async (req, res) => {
 
         if (!flight.notify_email) {
             return res.status(400).json({ error: 'No email address configured for this flight' });
+        }
+
+        const localAgentEnabled = ['1', 'true', 'yes'].includes(String(process.env.LOCAL_AGENT_ENABLED || '').toLowerCase());
+        if (localAgentEnabled) {
+            const jobId = createJob({
+                type: 'send_email',
+                flight_id: flight.id,
+                progress_total: 1,
+                payload_json: JSON.stringify({ origin: 'manual_notify', flight_id: flight.id })
+            });
+            return res.json({ queued: true, jobId });
         }
 
         const prices = flight.prices || [];

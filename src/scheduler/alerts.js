@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { getDb } from '../db/setup.js';
 import { getActiveFlights, savePrice, updateFlightCheckStatus } from '../db/flights.js';
+import { createJob } from '../db/jobs.js';
 import { sendPriceDropAlert } from '../notifications/email.js';
 import { analyzeFlightPrice } from '../agent/analyze.js';
 import { getBestFlexPrice } from '../db/flex.js';
@@ -14,6 +15,26 @@ async function checkAndSendPriceUpdates() {
     console.log('\n[Scheduler] Running scheduled price check...');
     let db = null;
     try {
+        const localAgentEnabled = ['1', 'true', 'yes'].includes(String(process.env.LOCAL_AGENT_ENABLED || '').toLowerCase());
+        if (localAgentEnabled) {
+            const flights = getActiveFlights();
+            const payload = { origin: 'scheduler', requested_at: new Date().toISOString() };
+            createJob({ type: 'check_all', progress_total: flights.length, payload_json: JSON.stringify(payload) });
+
+            for (const flight of flights) {
+                if (!flight.notify_email) continue;
+                createJob({
+                    type: 'send_email',
+                    flight_id: flight.id,
+                    progress_total: 1,
+                    payload_json: JSON.stringify({ ...payload, flight_id: flight.id })
+                });
+            }
+
+            console.log(`[Scheduler] Enqueued ${flights.length} check(s) + email jobs for local agent`);
+            return;
+        }
+
         // First, update latest prices (Amadeus primary, Google fallback)
         console.log('[Scheduler] Refreshing prices...');
         const flightsToCheck = getActiveFlights();

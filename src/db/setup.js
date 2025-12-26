@@ -62,6 +62,11 @@ function migrate(db) {
         db.exec(`ALTER TABLE flights ADD COLUMN last_check_error TEXT`);
     }
 
+    const jobCols = db.prepare(`PRAGMA table_info(jobs)`).all().map(c => c.name);
+    if (jobCols.length && !jobCols.includes('payload_json')) {
+        db.exec(`ALTER TABLE jobs ADD COLUMN payload_json TEXT`);
+    }
+
     // New tables (safe to run repeatedly)
     db.exec(`
         CREATE TABLE IF NOT EXISTS jobs (
@@ -71,6 +76,7 @@ function migrate(db) {
             status TEXT NOT NULL DEFAULT 'queued',
             progress_current INTEGER DEFAULT 0,
             progress_total INTEGER DEFAULT 0,
+            payload_json TEXT,
             result_json TEXT,
             error_text TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,

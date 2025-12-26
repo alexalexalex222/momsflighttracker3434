@@ -85,6 +85,26 @@ AMADEUS_CLIENT_SECRET=...
 - If you’re using Chromium via Nixpacks `nixPkgs = ["chromium", ...]`, set `PUPPETEER_EXECUTABLE_PATH=chromium` (don’t use `/usr/bin/chromium-browser`, it’s often a snap stub).
 - For Zapier email delivery, set `ZAPIER_WEBHOOK_URL` in Railway Variables and restart the service.
 
+### Local Agent (Mac + Claude MCP)
+
+If you want your **local machine** to run AI automation (Claude Code + Zapier MCP) instead of Railway:
+
+1) Set on Railway:
+```
+LOCAL_AGENT_ENABLED=true
+AGENT_TOKEN=change-me
+```
+
+2) Run the local agent on your Mac:
+```
+AGENT_BASE_URL=https://your-railway-app.up.railway.app
+AGENT_TOKEN=change-me
+AGENT_EMAIL_PROVIDER=mcp
+node scripts/local-agent.js
+```
+
+The agent will poll `/api/agent/jobs`, run checks locally, and report results back to Railway.
+
 ## Project Structure
 
 ```

@@ -237,8 +237,14 @@ export function runContextRefreshJob(jobId, flightId) {
     });
 }
 
-export function createAndRunJob({ type, flightId = null, progressTotal = 0, window = 5 }) {
-    const jobId = createJob({ type, flight_id: flightId, progress_total: progressTotal });
+export function createAndRunJob({ type, flightId = null, progressTotal = 0, window = 5, payload = null }) {
+    const payloadJson = payload ? JSON.stringify(payload) : null;
+    const jobId = createJob({ type, flight_id: flightId, progress_total: progressTotal, payload_json: payloadJson });
+
+    const localAgentEnabled = ['1', 'true', 'yes'].includes(String(process.env.LOCAL_AGENT_ENABLED || '').toLowerCase());
+    if (localAgentEnabled) {
+        return jobId;
+    }
 
     if (type === 'check_now') runCheckNowJob(jobId, flightId);
     if (type === 'check_all') runCheckAllJob(jobId);

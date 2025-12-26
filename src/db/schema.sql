@@ -58,11 +58,12 @@ CREATE INDEX IF NOT EXISTS idx_flights_active ON flights(is_active);
 -- Background jobs (async checks, flex scans, context refresh)
 CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type TEXT NOT NULL,                 -- check_now | check_all | flex_scan | context_refresh
+    type TEXT NOT NULL,                 -- check_now | check_all | flex_scan | context_refresh | send_email
     flight_id INTEGER,
     status TEXT NOT NULL DEFAULT 'queued',
     progress_current INTEGER DEFAULT 0,
     progress_total INTEGER DEFAULT 0,
+    payload_json TEXT,
     result_json TEXT,
     error_text TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,

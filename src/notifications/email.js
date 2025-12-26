@@ -1,6 +1,9 @@
 import { Resend } from 'resend';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 let resendClient = null;
+const execFileAsync = promisify(execFile);
 
 function getResendClient() {
     if (resendClient) return resendClient;
@@ -47,6 +50,48 @@ function getEmailProvider() {
     if (process.env.ZAPIER_WEBHOOK_URL) return 'zapier';
     if (process.env.RESEND_API_KEY || process.env.RESEND_KEY) return 'resend';
     return 'none';
+}
+
+async function sendEmailViaMcp({ to, subject, html, text }) {
+    const prompt = `
+You are an automation agent. Use Zapier MCP to send an email.
+If you have a Gmail/Email tool, use it now.
+
+To: ${to}
+Subject: ${subject}
+HTML:
+${html}
+
+Plain text:
+${text || ''}
+
+Reply with ONLY JSON:
+{"ok": true} on success or {"ok": false, "error": "..."} on failure.
+`;
+
+    const { stdout } = await execFileAsync('claude', [
+        '--dangerously-skip-permissions',
+        '-p',
+        prompt.trim()
+    ]);
+
+    const match = stdout.match(/\{[\s\S]*\}/);
+    if (!match) {
+        throw new Error('Claude MCP did not return JSON');
+    }
+
+    let parsed;
+    try {
+        parsed = JSON.parse(match[0]);
+    } catch (e) {
+        throw new Error('Claude MCP returned invalid JSON');
+    }
+
+    if (!parsed.ok) {
+        throw new Error(parsed.error || 'Claude MCP failed to send email');
+    }
+
+    return { ok: true };
 }
 
 export async function sendPriceDropAlert({
@@ -167,6 +212,10 @@ export async function sendPriceDropAlert({
     const provider = getEmailProvider();
 
     try {
+        if (provider === 'mcp') {
+            return await sendEmailViaMcp({ to, subject, html });
+        }
+
         if (provider === 'zapier') {
             return await sendEmailViaZapier({ to, subject, html, meta: { flightName, route } });
         }
