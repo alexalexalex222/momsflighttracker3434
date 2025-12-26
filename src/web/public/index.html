@@ -1282,6 +1282,10 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                         </button>
                         <button class="btn btn-secondary btn-sm" onclick="checkNow(${f.id})">Check</button>
+                        <button class="btn btn-primary btn-sm" onclick="analyzeNow(${f.id})" title="Full analysis with travel intel">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                            Analyze
+                        </button>
                         <button class="btn btn-ghost btn-sm" onclick="editFlight(${f.id})">Update</button>
                         <button class="btn btn-secondary btn-sm" onclick="sendAlert(${f.id})" title="Send email alert">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -1414,6 +1418,170 @@
             } finally {
                 hideLoading();
             }
+        }
+
+        async function analyzeNow(id) {
+            const flight = flights.find(f => f.id === id);
+            const flightName = flight ? flight.name : 'flight';
+
+            showLoading(
+                `Analyzing ${flightName}...`,
+                'Running full travel intelligence analysis'
+            );
+
+            try {
+                const r = await fetch(`/api/flights/${id}/analyze`, { method: 'POST' });
+                const d = await readJsonSafe(r);
+                if (!r.ok) throw new Error(getApiErrorMessage(d, `Analysis failed (${r.status})`));
+
+                // Update loading text as analysis progresses
+                updateLoadingText('Getting flight price...', 'Checking Google Flights with proper cabin class');
+                await sleep(3000);
+
+                updateLoadingText('Researching destination...', 'Searching news, holidays, events');
+                await sleep(2000);
+
+                updateLoadingText('Analyzing travel context...', 'Checking strikes, currency, cultural info');
+
+                const job = await pollJob(d.jobId, 120000); // 2 minute timeout for full analysis
+
+                if (job.status === 'error') throw new Error(job.error_text || 'Analysis failed');
+
+                // Parse and display results
+                let result = null;
+                try {
+                    result = job.result_json ? JSON.parse(job.result_json) : null;
+                } catch (e) {
+                    result = null;
+                }
+
+                if (result?.analysis) {
+                    showAnalysisResults(flightName, result.analysis);
+                } else {
+                    updateLoadingText('Done!', 'Analysis complete - price updated');
+                    await sleep(500);
+                    await loadFlights();
+                }
+            } catch (e) {
+                alert(e.message || 'Analysis failed');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function showAnalysisResults(flightName, analysis) {
+            hideLoading();
+
+            // Determine recommendation color
+            const recColors = {
+                book_now: { bg: '#10b981', text: 'BOOK NOW', icon: '🟢' },
+                wait: { bg: '#f59e0b', text: 'WAIT', icon: '🟡' },
+                monitor: { bg: '#6366f1', text: 'MONITOR', icon: '🔵' }
+            };
+            const rec = recColors[analysis.prediction?.recommendation] || recColors.monitor;
+
+            const modal = document.createElement('div');
+            modal.className = 'analysis-modal';
+            modal.innerHTML = `
+                <div class="analysis-overlay" onclick="this.parentElement.remove()"></div>
+                <div class="analysis-content">
+                    <button class="analysis-close" onclick="this.closest('.analysis-modal').remove()">&times;</button>
+                    <h2 style="margin-bottom: 1rem; color: var(--gold);">Travel Intelligence: ${flightName}</h2>
+
+                    <div class="recommendation-badge" style="background: ${rec.bg}; color: white; padding: 1rem 2rem; border-radius: 12px; text-align: center; margin-bottom: 1.5rem;">
+                        <div style="font-size: 2rem;">${rec.icon}</div>
+                        <div style="font-size: 1.5rem; font-weight: bold;">${rec.text}</div>
+                        <div style="font-size: 0.9rem; opacity: 0.9; margin-top: 0.5rem;">${analysis.prediction?.reasoning || ''}</div>
+                    </div>
+
+                    <div class="analysis-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="analysis-card" style="background: var(--card-bg); padding: 1rem; border-radius: 8px;">
+                            <h4 style="color: var(--gold); margin-bottom: 0.5rem;">💰 Price</h4>
+                            <div style="font-size: 1.5rem; font-weight: bold;">$${analysis.price?.current || 'N/A'}</div>
+                            <div style="font-size: 0.85rem; color: var(--muted);">${analysis.price?.vs_average || ''} • ${analysis.price?.assessment || ''}</div>
+                        </div>
+
+                        <div class="analysis-card" style="background: var(--card-bg); padding: 1rem; border-radius: 8px;">
+                            <h4 style="color: var(--gold); margin-bottom: 0.5rem;">📈 Prediction</h4>
+                            <div style="font-size: 1.2rem;">Prices will ${analysis.prediction?.direction || 'stay stable'}</div>
+                            <div style="font-size: 0.85rem; color: var(--muted);">Confidence: ${analysis.prediction?.confidence || 'medium'}</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1.5rem;">
+                        <h4 style="color: var(--gold); margin-bottom: 0.75rem;">🌍 Travel Context</h4>
+                        <div style="display: grid; gap: 0.75rem;">
+                            ${analysis.context?.news ? `<div style="background: var(--card-bg); padding: 0.75rem; border-radius: 6px;"><strong>📰 News:</strong> ${analysis.context.news}</div>` : ''}
+                            ${analysis.context?.holidays ? `<div style="background: var(--card-bg); padding: 0.75rem; border-radius: 6px;"><strong>🎉 Holidays:</strong> ${analysis.context.holidays}</div>` : ''}
+                            ${analysis.context?.strikes ? `<div style="background: var(--card-bg); padding: 0.75rem; border-radius: 6px;"><strong>⚠️ Disruptions:</strong> ${analysis.context.strikes}</div>` : ''}
+                            ${analysis.context?.currency ? `<div style="background: var(--card-bg); padding: 0.75rem; border-radius: 6px;"><strong>💱 Currency:</strong> ${analysis.context.currency}</div>` : ''}
+                            ${analysis.context?.cultural ? `<div style="background: var(--card-bg); padding: 0.75rem; border-radius: 6px;"><strong>🏛️ Cultural:</strong> ${analysis.context.cultural}</div>` : ''}
+                        </div>
+                    </div>
+
+                    ${analysis.alerts?.length ? `
+                        <div style="margin-top: 1.5rem; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--gold); padding: 1rem; border-radius: 8px;">
+                            <h4 style="color: var(--gold); margin-bottom: 0.5rem;">⚡ Alerts</h4>
+                            <ul style="margin: 0; padding-left: 1.25rem;">
+                                ${analysis.alerts.map(a => `<li>${a}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+
+                    <button onclick="this.closest('.analysis-modal').remove(); loadFlights();" class="btn btn-primary" style="width: 100%; margin-top: 1.5rem;">
+                        Got it
+                    </button>
+                </div>
+            `;
+
+            // Add styles for modal
+            if (!document.getElementById('analysis-modal-styles')) {
+                const styles = document.createElement('style');
+                styles.id = 'analysis-modal-styles';
+                styles.textContent = `
+                    .analysis-modal {
+                        position: fixed;
+                        inset: 0;
+                        z-index: 3000;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        padding: 1rem;
+                    }
+                    .analysis-overlay {
+                        position: absolute;
+                        inset: 0;
+                        background: rgba(0,0,0,0.8);
+                        backdrop-filter: blur(4px);
+                    }
+                    .analysis-content {
+                        position: relative;
+                        background: var(--dark-bg);
+                        border: 1px solid var(--border);
+                        border-radius: 16px;
+                        padding: 2rem;
+                        max-width: 600px;
+                        width: 100%;
+                        max-height: 90vh;
+                        overflow-y: auto;
+                    }
+                    .analysis-close {
+                        position: absolute;
+                        top: 1rem;
+                        right: 1rem;
+                        background: none;
+                        border: none;
+                        color: var(--muted);
+                        font-size: 1.5rem;
+                        cursor: pointer;
+                    }
+                    .analysis-close:hover { color: white; }
+                `;
+                document.head.appendChild(styles);
+            }
+
+            document.body.appendChild(modal);
+            loadFlights(); // Refresh prices in background
         }
 
         async function del(id) {

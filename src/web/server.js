@@ -249,6 +249,23 @@ app.post('/api/flights/check', (req, res) => {
     }
 });
 
+// Full travel intelligence analysis (price + 5 web searches + prediction)
+app.post('/api/flights/:id/analyze', (req, res) => {
+    try {
+        const flightId = parseInt(req.params.id);
+        const jobId = createAndRunJob({
+            type: 'full_analysis',
+            flightId,
+            progressTotal: 1,
+            payload: { origin: 'railway', requested_at: new Date().toISOString() }
+        });
+        res.json({ jobId });
+    } catch (error) {
+        console.error('[API] POST /api/flights/:id/analyze failed:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.get('/api/jobs/:id', (req, res) => {
     try {
         const job = getJob(parseInt(req.params.id));

@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/web/server.js",
     "dev": "node src/web/server.js",
-    "agent": "node scripts/local-agent.js",
+    "agent": "node src/agent/local-agent.js",
     "scrape": "claude --chrome -p \"$(cat src/agent/scrape-prompt.md)\" --dangerously-skip-permissions",
     "scrape:test": "node src/agent/test-scrape.js",
     "setup": "node src/db/setup.js",
