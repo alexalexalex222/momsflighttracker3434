@@ -6,203 +6,383 @@
     <title>Altitude — Flight Tracker</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
-            --bg: #09090b;
-            --bg-card: #111113;
-            --bg-input: #18181b;
-            --border: rgba(255,255,255,0.08);
-            --text: #fafafa;
-            --text-dim: #a1a1aa;
-            --text-muted: #52525b;
-            --accent: #eab308;
-            --accent-dim: rgba(234,179,8,0.12);
-            --green: #22c55e;
-            --green-dim: rgba(34,197,94,0.12);
-            --red: #ef4444;
-            --red-dim: rgba(239,68,68,0.12);
-            --radius: 10px;
+            --bg-deep: #050507;
+            --bg: #0a0a0c;
+            --bg-card: #111114;
+            --bg-card-hover: #161619;
+            --bg-input: #1a1a1e;
+            --border: rgba(255,255,255,0.06);
+            --border-light: rgba(255,255,255,0.1);
+            --text: #f8f8f8;
+            --text-dim: #9ca3af;
+            --text-muted: #4b5563;
+            --accent: #d4a574;
+            --accent-light: #e8c9a8;
+            --accent-dim: rgba(212,165,116,0.12);
+            --accent-glow: rgba(212,165,116,0.25);
+            --green: #34d399;
+            --green-dim: rgba(52,211,153,0.12);
+            --red: #f87171;
+            --red-dim: rgba(248,113,113,0.12);
+            --radius: 12px;
+            --radius-lg: 16px;
+            --shadow-subtle: 0 2px 8px rgba(0,0,0,0.3);
+            --shadow-card: 0 4px 24px rgba(0,0,0,0.4);
+            --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        html { font-size: 15px; }
+        html { font-size: 15px; scroll-behavior: smooth; }
+
         body {
-            font-family: 'Inter', -apple-system, sans-serif;
+            font-family: 'DM Sans', -apple-system, sans-serif;
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
             -webkit-font-smoothing: antialiased;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Subtle background texture */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(212,165,116,0.04), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 100%, rgba(212,165,116,0.02), transparent);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Corner Decorations - Elegant Winter Theme */
+        .corner-decor {
+            position: fixed;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0.6;
+        }
+
+        .corner-decor.top-left {
+            top: 0;
+            left: 0;
+            width: 200px;
+            height: 200px;
+        }
+
+        .corner-decor.top-right {
+            top: 0;
+            right: 0;
+            width: 180px;
+            height: 180px;
+        }
+
+        .snowflake {
+            position: absolute;
+            fill: none;
+            stroke: var(--accent);
+            stroke-width: 1;
+            opacity: 0.4;
+            animation: twinkle 4s ease-in-out infinite;
+        }
+
+        .snowflake:nth-child(2) { animation-delay: 1s; opacity: 0.25; }
+        .snowflake:nth-child(3) { animation-delay: 2s; opacity: 0.3; }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.2; }
+            50% { opacity: 0.5; }
+        }
+
+        .ornament {
+            position: absolute;
+        }
+
+        .ornament-string {
+            stroke: var(--accent);
+            stroke-width: 1;
+            fill: none;
+            opacity: 0.5;
+        }
+
+        .ornament-ball {
+            fill: url(#ornamentGradient);
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+
+        .ornament-shine {
+            fill: rgba(255,255,255,0.2);
+        }
+
+        .ornament-cap {
+            fill: var(--accent);
         }
 
         /* Header */
         .header {
-            padding: 20px 24px;
+            padding: 24px 32px;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
             position: sticky;
             top: 0;
-            background: var(--bg);
+            background: rgba(10,10,12,0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             z-index: 100;
         }
 
         .logo {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 14px;
         }
 
         .logo-icon {
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, var(--accent), #ca8a04);
-            border-radius: 8px;
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(145deg, var(--accent), #b8956a);
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
+            box-shadow: 0 4px 12px rgba(212,165,116,0.25);
         }
 
-        .logo-icon svg { width: 18px; height: 18px; color: var(--bg); }
-        .logo-text { font-weight: 700; font-size: 1.1rem; }
+        .logo-icon svg { width: 22px; height: 22px; color: var(--bg-deep); }
+
+        .logo-text {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.4rem;
+            letter-spacing: -0.02em;
+        }
 
         .christmas-tag {
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 0.8rem;
+            gap: 10px;
+            font-size: 0.85rem;
             color: var(--text-muted);
+            font-weight: 500;
         }
 
-        .ornament-tiny { width: 20px; height: 24px; }
+        .christmas-tag svg {
+            width: 22px;
+            height: 26px;
+        }
 
         /* Container */
         .container {
-            max-width: 700px;
+            max-width: 720px;
             margin: 0 auto;
-            padding: 40px 24px 80px;
+            padding: 48px 28px 100px;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Schedule Info */
+        .schedule-info {
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-input));
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 18px;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .schedule-info::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--green);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--green);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
 
         /* Welcome State */
         .welcome {
             text-align: center;
-            padding: 60px 20px;
+            padding: 80px 20px;
         }
 
         .welcome-icon {
-            width: 72px;
-            height: 72px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            margin: 0 auto 20px;
+            width: 88px;
+            height: 88px;
+            background: linear-gradient(145deg, var(--bg-card), var(--bg-input));
+            border: 1px solid var(--border-light);
+            border-radius: 22px;
+            margin: 0 auto 28px;
             display: flex;
             align-items: center;
             justify-content: center;
+            box-shadow: var(--shadow-card);
         }
 
-        .welcome-icon svg { width: 32px; height: 32px; color: var(--accent); }
+        .welcome-icon svg { width: 38px; height: 38px; color: var(--accent); }
 
         .welcome h1 {
-            font-size: 1.6rem;
-            font-weight: 700;
-            margin-bottom: 8px;
+            font-family: 'Playfair Display', serif;
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            letter-spacing: -0.02em;
         }
 
         .welcome p {
             color: var(--text-dim);
-            margin-bottom: 28px;
-            max-width: 360px;
+            margin-bottom: 36px;
+            max-width: 380px;
             margin-left: auto;
             margin-right: auto;
-            line-height: 1.5;
+            line-height: 1.6;
+            font-size: 1.05rem;
         }
 
         /* Buttons */
         .btn {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            padding: 12px 20px;
+            gap: 10px;
+            padding: 14px 24px;
             border-radius: var(--radius);
             font-size: 0.95rem;
             font-weight: 600;
             cursor: pointer;
             border: none;
             font-family: inherit;
-            transition: all 0.15s ease;
+            transition: all var(--transition);
         }
 
         .btn svg { width: 18px; height: 18px; }
 
-        .btn-primary { background: var(--accent); color: var(--bg); }
-        .btn-primary:hover { background: #d4a106; }
+        .btn-primary {
+            background: linear-gradient(145deg, var(--accent), #b8956a);
+            color: var(--bg-deep);
+            box-shadow: 0 4px 16px rgba(212,165,116,0.3);
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(212,165,116,0.4);
+        }
 
-        .btn-secondary { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); }
-        .btn-secondary:hover { background: var(--bg-input); }
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text);
+            border: 1px solid var(--border-light);
+        }
+        .btn-secondary:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--accent);
+        }
 
-        .btn-ghost { background: transparent; color: var(--text-dim); padding: 10px 14px; }
-        .btn-ghost:hover { background: var(--bg-card); color: var(--text); }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-dim);
+            padding: 10px 14px;
+        }
+        .btn-ghost:hover {
+            background: var(--bg-card);
+            color: var(--text);
+        }
 
-        .btn-danger { background: var(--red-dim); color: var(--red); padding: 8px 14px; font-size: 0.85rem; }
-        .btn-danger:hover { background: rgba(239,68,68,0.2); }
+        .btn-danger {
+            background: var(--red-dim);
+            color: var(--red);
+            padding: 10px 14px;
+            font-size: 0.85rem;
+        }
+        .btn-danger:hover {
+            background: rgba(248,113,113,0.2);
+        }
 
-        .btn-sm { padding: 8px 14px; font-size: 0.85rem; }
+        .btn-sm { padding: 10px 16px; font-size: 0.85rem; }
         .btn-loading { opacity: 0.6; pointer-events: none; }
 
         /* Form Card */
         .form-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 24px;
-            margin-bottom: 28px;
+            background: linear-gradient(180deg, var(--bg-card) 0%, rgba(17,17,20,0.8) 100%);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            margin-bottom: 32px;
+            box-shadow: var(--shadow-card);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .form-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-dim), transparent);
         }
 
         .form-card h2 {
-            font-size: 1rem;
+            font-family: 'Playfair Display', serif;
+            font-size: 1.15rem;
             font-weight: 600;
-            margin-bottom: 20px;
+            margin-bottom: 24px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
 
-        .form-card h2 svg { width: 20px; height: 20px; color: var(--accent); }
+        .form-card h2 svg { width: 22px; height: 22px; color: var(--accent); }
 
         .form-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 14px;
+            gap: 16px;
         }
 
         .form-group {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 8px;
         }
 
         .form-group.full { grid-column: span 2; }
 
         .form-group label {
             font-size: 0.8rem;
-            font-weight: 500;
+            font-weight: 600;
             color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
         .form-group input,
         .form-group select {
-            height: 44px;
-            background: var(--bg);
+            height: 48px;
+            background: var(--bg-deep);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 0 14px;
+            border-radius: 10px;
+            padding: 0 16px;
             font-size: 0.95rem;
             color: var(--text);
             font-family: inherit;
+            transition: all var(--transition);
         }
 
         .form-group input::placeholder { color: var(--text-muted); }
@@ -216,75 +396,39 @@
 
         .form-group select {
             appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2352525b' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%234b5563' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
-            background-position: right 14px center;
-            padding-right: 40px;
+            background-position: right 16px center;
+            padding-right: 44px;
             cursor: pointer;
         }
 
         .airport-input {
             font-family: 'JetBrains Mono', monospace;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.15em;
             text-align: center;
             font-weight: 500;
+            font-size: 1.1rem;
         }
 
         .form-actions {
             display: flex;
-            gap: 12px;
-            margin-top: 20px;
-            padding-top: 16px;
+            gap: 14px;
+            margin-top: 24px;
+            padding-top: 20px;
             border-top: 1px solid var(--border);
         }
 
         .form-error {
-            margin-top: 12px;
-            padding: 10px 12px;
-            border-radius: 10px;
-            border: 1px solid rgba(239, 68, 68, 0.35);
+            margin-top: 16px;
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            border: 1px solid rgba(248, 113, 113, 0.35);
             background: var(--red-dim);
             color: #fecaca;
-            font-size: 0.85rem;
-            line-height: 1.4;
-        }
-
-        .schedule-info {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 12px 14px;
-            font-size: 0.85rem;
-            color: var(--text-dim);
-            margin-bottom: 18px;
-        }
-
-        .flex-summary {
-            margin-top: 10px;
-            font-size: 0.85rem;
-            color: var(--text-dim);
-            line-height: 1.4;
-        }
-
-        .context-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .context-item {
-            background: var(--bg-input);
-            padding: 10px 12px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            color: var(--text-dim);
-            line-height: 1.4;
-        }
-
-        .context-item a {
-            color: var(--accent);
-            text-decoration: none;
+            font-size: 0.9rem;
+            line-height: 1.5;
         }
 
         /* Flight List */
@@ -292,60 +436,97 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 14px;
+            margin-bottom: 20px;
         }
 
         .section-title {
-            font-size: 0.95rem;
+            font-family: 'Playfair Display', serif;
+            font-size: 1.1rem;
             font-weight: 600;
-            color: var(--text-dim);
+            color: var(--text);
         }
 
-        .flight-list { display: flex; flex-direction: column; gap: 10px; }
+        .flight-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
 
         .flight-card {
-            background: var(--bg-card);
+            background: linear-gradient(135deg, var(--bg-card) 0%, rgba(22,22,25,0.6) 100%);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 18px;
+            border-radius: var(--radius-lg);
+            padding: 22px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 16px;
-            transition: border-color 0.15s;
+            gap: 20px;
+            transition: all var(--transition);
+            position: relative;
+            overflow: hidden;
         }
 
-        .flight-card:hover { border-color: rgba(255,255,255,0.12); }
+        .flight-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(180deg, var(--accent), transparent);
+            opacity: 0;
+            transition: opacity var(--transition);
+        }
+
+        .flight-card:hover {
+            border-color: var(--border-light);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-card);
+        }
+
+        .flight-card:hover::before {
+            opacity: 1;
+        }
 
         .flight-info { flex: 1; }
 
         .flight-name {
             font-weight: 600;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             flex-wrap: wrap;
+            font-size: 1.05rem;
         }
 
         .route-tag {
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.7rem;
-            font-weight: 500;
-            background: var(--accent-dim);
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-dim), rgba(212,165,116,0.06));
             color: var(--accent);
-            padding: 4px 10px;
-            border-radius: 6px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.05em;
+            border: 1px solid var(--accent-dim);
         }
 
-        .flight-meta { font-size: 0.85rem; color: var(--text-muted); }
+        .flight-meta {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
 
         .flight-price { text-align: right; }
 
         .price-value {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 1.3rem;
+            font-size: 1.5rem;
             font-weight: 600;
+            background: linear-gradient(135deg, var(--text), var(--text-dim));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .price-pending {
@@ -353,19 +534,29 @@
             font-style: italic;
             font-family: inherit;
             font-size: 0.95rem;
+            -webkit-text-fill-color: var(--text-muted);
         }
 
-        .price-trend { font-size: 0.75rem; font-weight: 500; margin-top: 2px; }
+        .price-trend {
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-top: 4px;
+        }
         .price-trend.down { color: var(--green); }
         .price-trend.up { color: var(--red); }
 
-        .flight-actions { display: flex; gap: 8px; }
+        .flight-actions {
+            display: flex;
+            gap: 8px;
+        }
 
         /* Modal */
         .modal-bg {
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.75);
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             display: none;
             align-items: center;
             justify-content: center;
@@ -377,88 +568,223 @@
 
         .modal {
             background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 14px;
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-lg);
             width: 100%;
-            max-width: 560px;
-            max-height: 80vh;
+            max-width: 600px;
+            max-height: 85vh;
             overflow: hidden;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+            animation: modalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes modalIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95) translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
         }
 
         .modal-header {
-            padding: 18px 20px;
+            padding: 20px 24px;
             border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .modal-title { font-weight: 600; font-size: 0.95rem; }
+        .modal-title {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
 
         .modal-close {
-            background: none;
-            border: none;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
             color: var(--text-muted);
             cursor: pointer;
-            padding: 4px;
+            padding: 8px;
+            transition: all var(--transition);
         }
 
-        .modal-close:hover { color: var(--text); }
+        .modal-close:hover {
+            color: var(--text);
+            border-color: var(--border-light);
+        }
 
-        .modal-body { padding: 20px; max-height: 70vh; overflow-y: auto; }
+        .modal-body {
+            padding: 24px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
 
         /* Analysis Section */
-        .analysis-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
-        .analysis-header { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px; color: var(--accent); }
+        .analysis-section {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .analysis-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--accent);
+            font-size: 0.95rem;
+        }
+
         .analysis-icon { font-size: 1.2rem; }
+
         .analysis-action {
             display: inline-block;
-            padding: 6px 12px;
-            border-radius: 6px;
+            padding: 8px 16px;
+            border-radius: 20px;
             font-weight: 600;
             font-size: 0.85rem;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
+            letter-spacing: 0.02em;
         }
-        .analysis-action.book-now { background: var(--green-dim); color: var(--green); }
-        .analysis-action.book-soon { background: var(--accent-dim); color: var(--accent); }
-        .analysis-action.monitor { background: var(--bg-input); color: var(--text-dim); }
-        .analysis-action.consider { background: var(--green-dim); color: var(--green); }
-        .analysis-reco { color: var(--text-dim); font-size: 0.9rem; line-height: 1.5; margin-bottom: 16px; }
-        .analysis-insights { display: flex; flex-direction: column; gap: 8px; }
-        .insight-item {
+
+        .analysis-action.book-now {
+            background: var(--green-dim);
+            color: var(--green);
+            border: 1px solid rgba(52,211,153,0.2);
+        }
+        .analysis-action.book-soon {
+            background: var(--accent-dim);
+            color: var(--accent);
+            border: 1px solid var(--accent-dim);
+        }
+        .analysis-action.monitor {
             background: var(--bg-input);
-            padding: 10px 12px;
-            border-radius: 8px;
-            font-size: 0.85rem;
             color: var(--text-dim);
-            line-height: 1.4;
+            border: 1px solid var(--border);
         }
+        .analysis-action.consider {
+            background: var(--green-dim);
+            color: var(--green);
+            border: 1px solid rgba(52,211,153,0.2);
+        }
+
+        .analysis-reco {
+            color: var(--text-dim);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .analysis-insights {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .insight-item {
+            background: linear-gradient(135deg, var(--bg-input), var(--bg-deep));
+            padding: 14px 16px;
+            border-radius: var(--radius);
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+            border: 1px solid var(--border);
+        }
+
         .insight-item strong { color: var(--text); }
-        .analysis-sources { margin-top: 12px; font-size: 0.75rem; color: var(--text-muted); }
-        .analysis-sources a { color: var(--accent); text-decoration: none; }
-        .analysis-sources a:hover { text-decoration: underline; }
-        .analysis-loading { text-align: center; color: var(--text-muted); padding: 20px; }
+
+        .analysis-sources {
+            margin-top: 16px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .analysis-sources a {
+            color: var(--accent);
+            text-decoration: none;
+            transition: color var(--transition);
+        }
+        .analysis-sources a:hover {
+            color: var(--accent-light);
+            text-decoration: underline;
+        }
+
+        .analysis-loading {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 24px;
+        }
+
+        .flex-summary {
+            margin-top: 12px;
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+        }
+
+        .context-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .context-item {
+            background: linear-gradient(135deg, var(--bg-input), var(--bg-deep));
+            padding: 14px 16px;
+            border-radius: var(--radius);
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+            border: 1px solid var(--border);
+            transition: all var(--transition);
+        }
+
+        .context-item:hover {
+            border-color: var(--border-light);
+        }
+
+        .context-item a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .context-item a:hover {
+            text-decoration: underline;
+        }
 
         .chart-box {
-            height: 180px;
-            background: var(--bg);
-            border-radius: 8px;
-            padding: 14px;
-            margin-bottom: 16px;
+            height: 200px;
+            background: linear-gradient(180deg, var(--bg-deep), rgba(5,5,7,0.5));
+            border-radius: var(--radius);
+            padding: 18px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
         }
 
-        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
 
         .stat-box {
-            background: var(--bg);
-            border-radius: 8px;
-            padding: 14px;
+            background: linear-gradient(180deg, var(--bg-input), var(--bg-deep));
+            border-radius: var(--radius);
+            padding: 18px 14px;
             text-align: center;
+            border: 1px solid var(--border);
         }
 
         .stat-num {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 1rem;
+            font-size: 1.1rem;
             font-weight: 600;
         }
 
@@ -469,23 +795,78 @@
             font-size: 0.65rem;
             color: var(--text-muted);
             text-transform: uppercase;
-            margin-top: 4px;
+            margin-top: 6px;
+            letter-spacing: 0.05em;
+            font-weight: 600;
         }
 
         /* Responsive */
         @media (max-width: 600px) {
+            .header { padding: 18px 20px; }
+            .container { padding: 32px 20px 80px; }
             .form-grid { grid-template-columns: 1fr; }
             .form-group.full { grid-column: span 1; }
-            .flight-card { flex-direction: column; text-align: center; gap: 12px; }
+            .flight-card {
+                flex-direction: column;
+                text-align: center;
+                gap: 16px;
+                padding: 20px;
+            }
             .flight-price { text-align: center; }
-            .flight-actions { justify-content: center; }
+            .flight-actions {
+                justify-content: center;
+                flex-wrap: wrap;
+            }
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .corner-decor { display: none; }
+            .welcome h1 { font-size: 1.6rem; }
         }
 
         .hidden { display: none !important; }
+
+        /* Smooth scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-deep); }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-light);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
     </style>
 </head>
 <body>
+    <!-- Corner Decorations -->
+    <div class="corner-decor top-left">
+        <svg class="snowflake" width="32" height="32" viewBox="0 0 32 32" style="top: 30px; left: 40px;">
+            <path d="M16 2v28M2 16h28M6 6l20 20M26 6L6 26M16 8l-4-4M16 8l4-4M16 24l-4 4M16 24l4 4M8 16l-4-4M8 16l-4 4M24 16l4-4M24 16l4 4"/>
+        </svg>
+        <svg class="snowflake" width="20" height="20" viewBox="0 0 32 32" style="top: 80px; left: 80px;">
+            <path d="M16 2v28M2 16h28M6 6l20 20M26 6L6 26"/>
+        </svg>
+        <svg class="snowflake" width="16" height="16" viewBox="0 0 32 32" style="top: 50px; left: 130px;">
+            <path d="M16 2v28M2 16h28"/>
+        </svg>
+    </div>
+
+    <div class="corner-decor top-right">
+        <svg width="60" height="80" viewBox="0 0 60 80" style="position: absolute; top: 20px; right: 40px;">
+            <defs>
+                <linearGradient id="ornamentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color:#c9302c"/>
+                    <stop offset="50%" style="stop-color:#a01c18"/>
+                    <stop offset="100%" style="stop-color:#7a1512"/>
+                </linearGradient>
+            </defs>
+            <path class="ornament-string" d="M30 0 L30 20"/>
+            <rect class="ornament-cap" x="24" y="18" width="12" height="8" rx="2"/>
+            <circle class="ornament-ball" cx="30" cy="50" r="24"/>
+            <ellipse class="ornament-shine" cx="22" cy="42" rx="6" ry="10"/>
+        </svg>
+        <svg class="snowflake" width="18" height="18" viewBox="0 0 32 32" style="top: 90px; right: 110px;">
+            <path d="M16 2v28M2 16h28M6 6l20 20M26 6L6 26"/>
+        </svg>
+    </div>
+
     <header class="header">
         <div class="logo">
             <div class="logo-icon">
@@ -496,10 +877,10 @@
             <span class="logo-text">Altitude</span>
         </div>
         <div class="christmas-tag">
-            <svg class="ornament-tiny" viewBox="0 0 20 26" fill="none">
-                <rect x="8" y="0" width="4" height="4" rx="1" fill="#eab308"/>
-                <circle cx="10" cy="15" r="9" fill="#dc2626"/>
-                <ellipse cx="7" cy="12" rx="3" ry="4" fill="white" opacity="0.15"/>
+            <svg viewBox="0 0 24 30" fill="none">
+                <rect x="10" y="0" width="4" height="5" rx="1" fill="#d4a574"/>
+                <circle cx="12" cy="18" r="10" fill="#c9302c"/>
+                <ellipse cx="9" cy="15" rx="3" ry="5" fill="white" opacity="0.12"/>
             </svg>
             For Mom
         </div>
@@ -507,7 +888,8 @@
 
     <div class="container">
         <div id="scheduleInfo" class="schedule-info hidden"></div>
-        <!-- Step 1: Welcome (no flights) -->
+
+        <!-- Welcome State -->
         <div id="welcomeState" class="welcome">
             <div class="welcome-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -522,7 +904,7 @@
             </button>
         </div>
 
-        <!-- Step 2: Add Form -->
+        <!-- Add Form -->
         <div id="formCard" class="form-card hidden">
             <h2>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
@@ -547,7 +929,7 @@
                         <input type="date" id="departureDate" required>
                     </div>
                     <div class="form-group">
-                        <label>Return (optional)</label>
+                        <label>Return (Optional)</label>
                         <input type="date" id="returnDate">
                     </div>
                     <div class="form-group">
@@ -583,11 +965,11 @@
             </form>
         </div>
 
-        <!-- Step 3: Flight List -->
+        <!-- Flight List -->
         <div id="flightSection" class="hidden">
             <div class="section-header">
                 <span class="section-title">Your Flights</span>
-                <div style="display:flex;gap:8px;">
+                <div style="display:flex;gap:10px;">
                     <button class="btn btn-secondary btn-sm" onclick="checkPrices()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 12a9 9 0 11-6.219-8.56"/><polyline points="21 3 21 9 15 9"/></svg>
                         Refresh
@@ -605,7 +987,7 @@
             <div class="modal-header">
                 <span id="modalTitle" class="modal-title">Price History</span>
                 <button class="modal-close" onclick="closeModal()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                 </button>
             </div>
             <div class="modal-body">
@@ -675,20 +1057,20 @@
         function setFormMode(mode, flight = null) {
             const form = document.getElementById('flightForm');
             const title = document.querySelector('#formCard h2');
-            const submit = form.querySelector('button[type=\"submit\"]');
+            const submit = form.querySelector('button[type="submit"]');
 
             form.dataset.mode = mode;
             form.dataset.editId = flight?.id || '';
 
             if (mode === 'edit' && flight) {
                 title.innerHTML = `
-                    <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 5v14M5 12h14\"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                     Update Flight
                 `;
                 submit.textContent = 'Update Flight';
             } else {
                 title.innerHTML = `
-                    <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 5v14M5 12h14\"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                     Add Flight
                 `;
                 submit.textContent = 'Start Tracking';
@@ -731,7 +1113,6 @@
                 el.textContent = `Next scheduled check: ${next} (${data.timezone || 'local'})`;
                 el.classList.remove('hidden');
             } catch (e) {
-                // Non-blocking; leave hidden if schedule fails
                 console.error(e);
             }
         }
@@ -972,7 +1353,7 @@
             document.getElementById('modalTitle').textContent = name;
             document.getElementById('modal').classList.add('open');
 
-            // Reset analysis section
+            // Reset sections
             document.getElementById('analysisSection').classList.add('hidden');
             document.getElementById('flexSection').classList.add('hidden');
             document.getElementById('contextSection').classList.add('hidden');
@@ -989,13 +1370,15 @@
                     labels: p.map(x => new Date(x.checked_at).toLocaleDateString()),
                     datasets: [{
                         data: p.map(x => x.price),
-                        borderColor: '#eab308',
+                        borderColor: '#d4a574',
                         borderWidth: 2,
-                        backgroundColor: 'rgba(234,179,8,0.1)',
+                        backgroundColor: 'rgba(212,165,116,0.08)',
                         fill: true,
-                        tension: 0.3,
-                        pointRadius: 3,
-                        pointBackgroundColor: '#eab308'
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#d4a574',
+                        pointBorderColor: '#0a0a0c',
+                        pointBorderWidth: 2
                     }]
                 },
                 options: {
@@ -1003,8 +1386,8 @@
                     maintainAspectRatio: false,
                     plugins: {legend:{display:false}},
                     scales: {
-                        y: {ticks:{callback:v=>'$'+v,color:'#52525b'},grid:{color:'rgba(255,255,255,0.05)'}},
-                        x: {ticks:{color:'#52525b'},grid:{display:false}}
+                        y: {ticks:{callback:v=>'$'+v,color:'#4b5563',font:{family:'JetBrains Mono'}},grid:{color:'rgba(255,255,255,0.04)'}},
+                        x: {ticks:{color:'#4b5563'},grid:{display:false}}
                     }
                 }
             });
@@ -1021,7 +1404,6 @@
                 document.getElementById('modalStats').innerHTML = '<p style="text-align:center;color:var(--text-muted);grid-column:span 4;">No data yet</p>';
             }
 
-            // Fetch and display analysis
             loadAnalysis(id);
 
             const flight = flights.find(f => f.id === id);
@@ -1129,7 +1511,7 @@
             const labels = sorted.map(r => new Date(r.departure_date).toLocaleDateString());
             const prices = sorted.map(r => r.price || null);
             const minPrice = Math.min(...prices.filter(p => Number.isFinite(p)));
-            const colors = sorted.map(r => (r.price === minPrice ? '#22c55e' : '#eab308'));
+            const colors = sorted.map(r => (r.price === minPrice ? '#34d399' : '#d4a574'));
 
             const ctx = document.getElementById('flexChart').getContext('2d');
             if (flexChart) flexChart.destroy();
@@ -1140,7 +1522,8 @@
                     labels,
                     datasets: [{
                         data: prices,
-                        backgroundColor: colors
+                        backgroundColor: colors,
+                        borderRadius: 4
                     }]
                 },
                 options: {
@@ -1148,8 +1531,8 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        y: { ticks: { callback: v => '$' + v, color: '#52525b' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                        x: { ticks: { color: '#52525b' }, grid: { display: false } }
+                        y: { ticks: { callback: v => '$' + v, color: '#4b5563', font: { family: 'JetBrains Mono' } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                        x: { ticks: { color: '#4b5563' }, grid: { display: false } }
                     }
                 }
             });
