@@ -390,6 +390,25 @@ app.post('/api/agent/jobs/:id/complete', requireAgentAuth, async (req, res) => {
     }
 });
 
+// Reset stuck jobs (running > 5 minutes)
+app.post('/api/agent/reset-stuck', requireAgentAuth, async (req, res) => {
+    try {
+        const result = await query(`
+            UPDATE jobs
+            SET status = 'queued', started_at = NULL
+            WHERE status = 'running'
+            AND started_at < NOW() - INTERVAL '5 minutes'
+            RETURNING id
+        `);
+        const resetIds = result.rows.map(r => r.id);
+        console.log(`[API] Reset ${resetIds.length} stuck jobs:`, resetIds);
+        res.json({ reset: resetIds.length, jobIds: resetIds });
+    } catch (error) {
+        console.error('[API] POST /api/agent/reset-stuck failed:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/api/flights/:id/flex-scan', async (req, res) => {
     try {
         const flightId = parseInt(req.params.id);
