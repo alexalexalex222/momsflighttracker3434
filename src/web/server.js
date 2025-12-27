@@ -21,7 +21,8 @@ import {
     getBestFlexPrice,
     upsertFlexPrice,
     getContext,
-    upsertContext
+    upsertContext,
+    query
 } from '../db/postgres.js';
 import { startScheduler } from '../scheduler/alerts.js';
 import { createAndRunJob } from '../jobs/runner.js';
