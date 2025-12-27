@@ -628,6 +628,46 @@ app.post('/api/flights/:id/notify', async (req, res) => {
     }
 });
 
+// Direct Puppeteer scrape for a single flight (FREE - no API key needed!)
+// This runs on Railway's servers using Puppeteer to scrape Google Flights
+app.post('/api/flights/:id/scrape', async (req, res) => {
+    try {
+        const flightId = parseInt(req.params.id);
+        const flight = await getFlight(flightId);
+        if (!flight) {
+            return res.status(404).json({ error: 'Flight not found' });
+        }
+
+        console.log(`[API] Scraping flight ${flightId}: ${flight.origin} → ${flight.destination}`);
+
+        const { getGoogleFlightQuote } = await import('../scraper/google-flights.js');
+        const result = await getGoogleFlightQuote(flight);
+
+        if (result && result.price) {
+            // Save the price to database
+            await savePrice({
+                flight_id: flightId,
+                price: result.price,
+                currency: result.currency || 'USD',
+                airline: result.airline || 'Unknown'
+            });
+
+            res.json({
+                success: true,
+                price: result.price,
+                currency: result.currency || 'USD',
+                airline: result.airline,
+                source: 'google_flights_puppeteer'
+            });
+        } else {
+            res.json({ success: false, error: 'No price found' });
+        }
+    } catch (error) {
+        console.error('[API] POST /api/flights/:id/scrape failed:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Trigger manual scrape
 app.post('/api/scrape', async (req, res) => {
     try {

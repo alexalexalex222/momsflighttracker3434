@@ -25,11 +25,7 @@ const AGENT_TOKEN = process.env.AGENT_TOKEN || '';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS) || 15000; // 15 seconds
 
-// Amadeus API credentials (free tier: ~10k calls/month)
-const AMADEUS_API_KEY = process.env.AMADEUS_API_KEY || '';
-const AMADEUS_API_SECRET = process.env.AMADEUS_API_SECRET || '';
-let amadeusToken = null;
-let amadeusTokenExpiry = 0;
+// No API keys needed! We use Railway's Puppeteer scraper for free Google Flights prices
 
 // Free model on OpenRouter
 const MODEL = process.env.OPENROUTER_MODEL || 'xiaomi/mimo-v2-flash:free';
@@ -45,26 +41,18 @@ if (!OPENROUTER_API_KEY) {
     process.exit(1);
 }
 
-const hasAmadeus = AMADEUS_API_KEY && AMADEUS_API_SECRET &&
-    AMADEUS_API_KEY !== 'YOUR_KEY_HERE' && AMADEUS_API_SECRET !== 'YOUR_SECRET_HERE';
-
 console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║  ✈️  FLIGHT TRACKER - CLOUD AGENT (Lightweight)                ║
 ║                                                               ║
-║  Polling: ${RAILWAY_URL.substring(0, 44).padEnd(44)}║
+║  Server: ${RAILWAY_URL.substring(0, 45).padEnd(45)}║
 ║  Model: ${MODEL.substring(0, 46).padEnd(46)}║
-║  Amadeus: ${(hasAmadeus ? '✓ Enabled (real prices)' : '✗ Not configured').padEnd(42)}║
+║  Prices: ✓ FREE via Railway Puppeteer (no API key needed!)   ║
 ║  Interval: ${String(POLL_INTERVAL_MS / 1000).padEnd(4)}seconds                                      ║
 ║                                                               ║
-║  This agent uses free cloud models - NO heavy local processes ║
+║  Uses Railway's Puppeteer to scrape Google Flights for free! ║
 ╚═══════════════════════════════════════════════════════════════╝
 `);
-
-if (!hasAmadeus) {
-    console.log('[CloudAgent] ⚠️  No Amadeus API key - will use price estimates only');
-    console.log('[CloudAgent]    Get free API at: https://developers.amadeus.com/register\n');
-}
 
 // ============================================================================
 // Railway API helpers
@@ -135,109 +123,39 @@ async function getPriceHistory(flightId) {
 }
 
 // ============================================================================
-// Amadeus Flight API - Real flight prices (free tier: ~10k calls/month)
+// Railway Puppeteer Scraper - FREE Google Flights prices (no API key needed!)
 // ============================================================================
 
-// Use test API by default (free tier), set AMADEUS_PRODUCTION=true for prod
-const AMADEUS_BASE_URL = process.env.AMADEUS_PRODUCTION === 'true'
-    ? 'https://api.amadeus.com'
-    : 'https://test.api.amadeus.com';
-
-async function getAmadeusToken() {
-    // Return cached token if still valid
-    if (amadeusToken && Date.now() < amadeusTokenExpiry - 60000) {
-        return amadeusToken;
-    }
-
+async function scrapeFlightOnServer(flightId) {
+    // Call Railway's /api/flights/:id/scrape endpoint which uses Puppeteer
+    // This runs on Railway's servers - NOT on your Mac!
     try {
-        const response = await fetch(`${AMADEUS_BASE_URL}/v1/security/oauth2/token`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: new URLSearchParams({
-                grant_type: 'client_credentials',
-                client_id: AMADEUS_API_KEY,
-                client_secret: AMADEUS_API_SECRET
-            })
+        console.log(`[CloudAgent] Asking Railway to scrape flight ${flightId}...`);
+
+        const response = await fetchWithAuth(`${RAILWAY_URL}/api/flights/${flightId}/scrape`, {
+            method: 'POST'
         });
 
         if (!response.ok) {
-            console.error('[CloudAgent] Amadeus auth failed:', response.status);
+            console.error('[CloudAgent] Server scrape failed:', response.status);
             return null;
         }
 
         const data = await response.json();
-        amadeusToken = data.access_token;
-        amadeusTokenExpiry = Date.now() + (data.expires_in * 1000);
-        return amadeusToken;
-    } catch (error) {
-        console.error('[CloudAgent] Amadeus auth error:', error.message);
+
+        if (data.success && data.price) {
+            console.log(`[CloudAgent] ✓ Got price: $${data.price} on ${data.airline}`);
+            return {
+                price: data.price,
+                currency: 'USD',
+                airline: data.airline || 'Unknown',
+                source: 'google_flights_puppeteer'
+            };
+        }
+
         return null;
-    }
-}
-
-async function searchFlightsAmadeus(origin, destination, departureDate, returnDate = null, cabinClass = 'ECONOMY', passengers = 1) {
-    if (!hasAmadeus) return null;
-
-    const token = await getAmadeusToken();
-    if (!token) return null;
-
-    try {
-        // Build query params
-        const params = new URLSearchParams({
-            originLocationCode: origin,
-            destinationLocationCode: destination,
-            departureDate: departureDate,
-            adults: String(passengers),
-            travelClass: cabinClass.toUpperCase(),
-            currencyCode: 'USD',
-            max: '5' // Get top 5 results
-        });
-
-        if (returnDate) {
-            params.append('returnDate', returnDate);
-        }
-
-        const url = `${AMADEUS_BASE_URL}/v2/shopping/flight-offers?${params}`;
-        console.log(`[CloudAgent] Searching Amadeus: ${origin} → ${destination} on ${departureDate}`);
-
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-
-        if (!response.ok) {
-            const error = await response.text();
-            console.error('[CloudAgent] Amadeus search failed:', response.status, error.substring(0, 200));
-            return null;
-        }
-
-        const data = await response.json();
-        const offers = data.data || [];
-
-        if (offers.length === 0) {
-            console.log('[CloudAgent] No flights found on Amadeus');
-            return null;
-        }
-
-        // Get the cheapest offer
-        const cheapest = offers[0];
-        const price = parseFloat(cheapest.price?.total || 0);
-        const airline = cheapest.validatingAirlineCodes?.[0] || 'Unknown';
-
-        console.log(`[CloudAgent] ✓ Amadeus found: $${price} on ${airline}`);
-
-        return {
-            price,
-            currency: cheapest.price?.currency || 'USD',
-            airline,
-            offers: offers.length,
-            source: 'amadeus_api'
-        };
     } catch (error) {
-        console.error('[CloudAgent] Amadeus search error:', error.message);
+        console.error('[CloudAgent] Server scrape error:', error.message);
         return null;
     }
 }
@@ -327,42 +245,23 @@ async function handleCheckNow(job, flight) {
     console.log(`[CloudAgent] CHECK NOW: ${flight.name}`);
     console.log(`[CloudAgent] Route: ${flight.origin} → ${flight.destination}`);
 
-    // Map cabin class to Amadeus format
-    const cabinMap = {
-        'economy': 'ECONOMY',
-        'premium_economy': 'PREMIUM_ECONOMY',
-        'business': 'BUSINESS',
-        'first': 'FIRST'
-    };
-    const cabinClass = cabinMap[flight.cabin_class] || 'ECONOMY';
-
-    // Try to get REAL price from Amadeus first
-    let realPrice = null;
-    if (hasAmadeus) {
-        realPrice = await searchFlightsAmadeus(
-            flight.origin,
-            flight.destination,
-            flight.departure_date,
-            flight.return_date,
-            cabinClass,
-            flight.passengers || 1
-        );
-    }
+    // Get REAL price from Railway's Puppeteer scraper (FREE!)
+    const realPrice = await scrapeFlightOnServer(flight.id);
 
     if (realPrice) {
-        // Got a real price from Amadeus!
+        // Got a real price from Google Flights via Puppeteer!
         return {
             success: true,
             price: realPrice.price,
             currency: realPrice.currency,
             airline: realPrice.airline,
-            source: 'amadeus_api',
-            note: `Real-time price from Amadeus (${realPrice.offers} offers found)`
+            source: 'google_flights_puppeteer',
+            note: 'Real Google Flights price via Railway Puppeteer'
         };
     }
 
-    // Fallback: Use LLM estimation if no Amadeus
-    console.log('[CloudAgent] No Amadeus price, using LLM estimation...');
+    // Fallback: Use LLM estimation if scrape failed
+    console.log('[CloudAgent] Server scrape failed, using LLM estimation...');
     const prices = await getPriceHistory(flight.id);
     const latestPrice = prices[0]?.price || null;
 
