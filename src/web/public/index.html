@@ -1401,17 +1401,17 @@
             );
 
             try {
-                const r = await fetch(`/api/flights/${id}/check`, { method: 'POST' });
+                // Use direct Puppeteer scrape on Railway (no agent needed!)
+                const r = await fetch(`/api/flights/${id}/scrape`, { method: 'POST' });
                 const d = await readJsonSafe(r);
                 if (!r.ok) throw new Error(getApiErrorMessage(d, `Check failed (${r.status})`));
 
-                updateLoadingText('Processing...', 'Analyzing flight prices');
-
-                const job = await pollJob(d.jobId);
-                if (job.status === 'error') throw new Error(job.error_text || 'Check failed');
-
-                updateLoadingText('Done!', 'Price updated successfully');
-                await sleep(500);
+                if (d.success) {
+                    updateLoadingText('Done!', `$${d.price} on ${d.airline}`);
+                } else {
+                    throw new Error(d.error || 'No price found');
+                }
+                await sleep(800);
                 await loadFlights();
             } catch (e) {
                 alert(e.message || 'Check failed');
@@ -1623,23 +1623,16 @@
             );
 
             try {
-                const r = await fetch('/api/flights/check', {method:'POST'});
+                // Use direct Puppeteer scrape on Railway (no agent needed!)
+                const r = await fetch('/api/scrape', {method:'POST'});
                 const d = await readJsonSafe(r);
                 if (!r.ok) throw new Error(getApiErrorMessage(d, `Error (${r.status})`));
 
-                const job = await pollJob(d.jobId, {
-                    onProgress: (j) => {
-                        if (j.progress_total > 0) {
-                            updateLoadingText(
-                                `Checking flight ${j.progress_current || 0} of ${j.progress_total}...`,
-                                'This may take a few seconds per flight'
-                            );
-                        }
-                    }
-                });
-                if (job.status === 'error') throw new Error(job.error_text || 'Check failed');
-
-                updateLoadingText('Done!', 'All prices updated');
+                if (d.success) {
+                    updateLoadingText('Done!', `Found prices for ${d.flights} flight(s)`);
+                } else {
+                    throw new Error('Scrape failed');
+                }
                 await sleep(500);
                 await loadFlights();
             } catch(e) {
