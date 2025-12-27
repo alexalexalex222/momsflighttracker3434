@@ -96,9 +96,15 @@ async function pollForJob() {
 
 async function completeJob(jobId, result) {
     try {
+        // Server expects { status: 'success'|'error', result: {...} }
+        const body = {
+            status: result.success ? 'success' : 'error',
+            result: result,
+            error_text: result.error || null
+        };
         const response = await fetchWithAuth(`${RAILWAY_URL}/api/agent/jobs/${jobId}/complete`, {
             method: 'POST',
-            body: JSON.stringify(result)
+            body: JSON.stringify(body)
         });
         return response.ok;
     } catch (error) {
@@ -530,8 +536,10 @@ async function processJob(job) {
     console.log(`\n[CloudAgent] ═══════════════════════════════════════════════`);
     console.log(`[CloudAgent] Processing job #${job.id}: ${job.type}`);
 
-    const flight = job.payload?.flightId
-        ? await getFlightFromRailway(job.payload.flightId)
+    // flight_id is at job level, not in payload
+    const flightId = job.flight_id || job.payload?.flightId;
+    const flight = flightId
+        ? await getFlightFromRailway(flightId)
         : null;
 
     if (job.type !== 'check_all' && !flight) {
