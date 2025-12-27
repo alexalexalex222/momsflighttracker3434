@@ -132,6 +132,11 @@ async function getPriceHistory(flightId) {
 // Amadeus Flight API - Real flight prices (free tier: ~10k calls/month)
 // ============================================================================
 
+// Use test API by default (free tier), set AMADEUS_PRODUCTION=true for prod
+const AMADEUS_BASE_URL = process.env.AMADEUS_PRODUCTION === 'true'
+    ? 'https://api.amadeus.com'
+    : 'https://test.api.amadeus.com';
+
 async function getAmadeusToken() {
     // Return cached token if still valid
     if (amadeusToken && Date.now() < amadeusTokenExpiry - 60000) {
@@ -139,7 +144,7 @@ async function getAmadeusToken() {
     }
 
     try {
-        const response = await fetch('https://api.amadeus.com/v1/security/oauth2/token', {
+        const response = await fetch(`${AMADEUS_BASE_URL}/v1/security/oauth2/token`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
@@ -188,7 +193,7 @@ async function searchFlightsAmadeus(origin, destination, departureDate, returnDa
             params.append('returnDate', returnDate);
         }
 
-        const url = `https://api.amadeus.com/v2/shopping/flight-offers?${params}`;
+        const url = `${AMADEUS_BASE_URL}/v2/shopping/flight-offers?${params}`;
         console.log(`[CloudAgent] Searching Amadeus: ${origin} → ${destination} on ${departureDate}`);
 
         const response = await fetch(url, {
